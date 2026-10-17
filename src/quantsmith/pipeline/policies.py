@@ -44,3 +44,20 @@ class FunctionOutputs(BaseModel):
 
 
 type Outputs = ProducerOutputs | FunctionOutputs
+
+
+class QuantizedMatMulOutputs(BaseModel):
+    """Round integer matrix products onto a calibrated output encoding."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    kind: Literal["quantized"] = Field(default="quantized")
+
+
+class FloatMatMulOutputs(BaseModel):
+    """Return FP32 directly from verified integer matrix products."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    kind: Literal["float"] = Field(default="float")
+
+
+type MatMulOutputs = QuantizedMatMulOutputs | FloatMatMulOutputs

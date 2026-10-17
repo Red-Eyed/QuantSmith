@@ -48,6 +48,8 @@ flowchart TD
 - `plan/` describes consumer input quantization, producer output quantization,
   reconstructed constants and paired channel rescaling. Conflicting writes fail
   before lowering; transforms and quantization cannot share a calibration revision.
+  `FloatOutput` explicitly omits output requantization after integer MatMul;
+  the ORT audit requires the matching source's float-output integer kernel.
 - `backends/onnx/` admits graphs, lowers plans on owned copies and runs the staged
   shell. `integer_execution/` adapts built-in static methods to the CPU execution
   contract. `ort_scaling/` plans specialized smoothing rewrites.
@@ -60,6 +62,10 @@ flowchart TD
 There is no new optimizer trait or Optuna dependency. Numerical algorithms and
 execution policy have different reasons to change; the execution adapter does not
 replace the existing algorithm protocols.
+
+The optional [integer MatMul with floating outputs](float-matmul-outputs.md)
+policy is separate from activation-function observation. It preserves existing
+defaults and uses the existing exact-reuse step before the final integer audit.
 
 ## Revision and execution ordering
 

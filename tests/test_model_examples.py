@@ -465,3 +465,41 @@ def test_output_selected_smoothing_real_exports(export_case: ExportCase) -> None
         row.integer_nodes == len(result.execution.integer_nodes)
         for row in report.candidates
     )
+
+
+@pytest.mark.parametrize("export_case", [TaskKind.TRANSFORMER], indirect=True)
+def test_float_matmul_global_transformer_export(export_case: ExportCase) -> None:
+    """Verify the opt-in global recipe keeps integer projections with float outputs."""
+    from examples.transformer.schema import Config as TransformerConfig
+    from quantsmith.pipeline import FloatMatMulOutputs
+    from quantsmith.plan import FloatOutput
+
+    config = TransformerConfig(matmul_outputs=FloatMatMulOutputs())
+    program = transformer_example.recipes(config).minmax
+    before = export_case.graph.SerializeToString()
+    result = expect_ok(
+        Quantizer.from_pipeline(program, histogram_bins=64)
+        .quantize(export_case.graph)
+        .calibrate(({export_case.input_name: export_case.inputs},))
+    )
+    assert export_case.graph.SerializeToString() == before
+    assert isinstance(result.execution, ExecutionReport)
+    assert len(result.execution.integer_nodes) == 15
+    assert all(
+        node.executed_operator == "MatMulIntegerToFloat"
+        for node in result.execution.integer_nodes
+    )
+    assert (
+        sum(
+            isinstance(op, FloatOutput)
+            for plan in result.plans
+            for op in plan.operations
+        )
+        == 15
+    )
+    compiled = compile_cpu(result.model)
+    assert (
+        sum(node.op_type == "MatMulIntegerToFloat" for node in compiled.graph.node)
+        == 15
+    )
+    assert not any(node.op_type == "DequantizeLinear" for node in compiled.graph.node)

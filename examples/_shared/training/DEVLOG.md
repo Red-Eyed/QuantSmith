@@ -1,5 +1,16 @@
 # Model experiment log
 
+## 2026-10-17 — Explicit integer matrix output representation
+
+The global-transformer example adds an opt-in MatMul output policy, independent
+of activation-function observation. Static inputs and per-output-column weights
+remain quantized while the integer kernel returns FP32 directly. Default recipes
+are unchanged. The global checkpoint retains all 15 integer projections and its
+public facade/example exports agree. The integrated path reduces matched INT8
+latency with small observed task differences on an expanded 32,768-token split;
+this is not a general speed or accuracy claim. See
+[the global design and results](../../../docs/float-matmul-outputs.md).
+
 ## 2026-10-17 — Output-based candidate selection
 
 The optional selector evaluates complete lowered graphs against FP32 model-output

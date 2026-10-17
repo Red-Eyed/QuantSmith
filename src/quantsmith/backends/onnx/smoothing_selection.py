@@ -21,7 +21,7 @@ from quantsmith.optimization.smoothing import (
 )
 from quantsmith.pipeline.contracts import CalibrationContext, Pipeline, Step
 from quantsmith.pipeline.state import FloatGraph, Folded, QuantizedGraph
-from quantsmith.plan import QuantizeOutput
+from quantsmith.plan import FloatOutput, QuantizeOutput
 from quantsmith.result import Err, FailureKind, Ok, QuantSmithError, Result, failure
 from quantsmith.runtime import OnnxEvaluator, evaluate
 
@@ -53,7 +53,7 @@ def observed_outputs(
                 operation.node
                 for plan in baseline.revision.plans
                 for operation in plan.operations
-                if isinstance(operation, QuantizeOutput)
+                if isinstance(operation, QuantizeOutput | FloatOutput)
             )
             return tuple(
                 node.output[0]

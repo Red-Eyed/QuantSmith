@@ -291,3 +291,18 @@ def test_output_selected_static_objective_is_rejected(
         reconstruct(operator_case.model, samples, rules, config=config),
         "separate candidate objective",
     )
+
+
+def test_float_integer_outputs_require_static_pipeline(
+    operator_case: OperatorCase, samples: Samples
+) -> None:
+    """Reject a static output representation at the reconstruction boundary."""
+    from quantsmith.pipeline import FloatMatMulOutputs
+    from tests.outcomes import expect_error
+
+    config = QuantizationConfig(matmul_outputs=FloatMatMulOutputs())
+    rules: Rules[Reconstructor] = Rules(default=GPTQv2())
+    expect_error(
+        reconstruct(operator_case.model, samples, rules, config=config),
+        "static execution pipeline",
+    )

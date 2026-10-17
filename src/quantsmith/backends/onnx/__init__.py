@@ -26,6 +26,7 @@ from quantsmith.domain import (
     PerTensor,
 )
 from quantsmith.plan import (
+    FloatOutput,
     QuantizationPlan,
     QuantizeConstant,
     QuantizeInput,
@@ -360,20 +361,33 @@ def _lower(model: ModelProto, plan: QuantizationPlan) -> ModelProto:
         operations[operation.node].append(operation)
     rewritten: list[NodeProto] = []
     for node in result.graph.node:
-        rewritten.extend(bias_qdq(result, node, operations[node.name], names.new))
+        preceding = bias_qdq(result, node, operations[node.name], names.new)
         following: list[NodeProto] = []
         for operation in operations[node.name]:
             match operation:
                 case QuantizeOutput():
                     following.extend(output_qdq(result, node, operation, names.new))
                 case QuantizeInput():
-                    rewritten.extend(qdq(result, node, operation, names))
+                    preceding.extend(qdq(result, node, operation, names))
                 case QuantizeConstant():
-                    rewritten.extend(quantized_constant(result, node, operation, names))
+                    preceding.extend(quantized_constant(result, node, operation, names))
                 case RescaleInput():
-                    rewritten.extend(rescale(result, node, operation, names))
+                    preceding.extend(rescale(result, node, operation, names))
+                case FloatOutput():
+                    pass
                 case _:
                     assert_never(operation)
+        if any(
+            isinstance(operation, FloatOutput) for operation in operations[node.name]
+        ):
+            from quantsmith.backends.onnx.integer_execution.float_output import (
+                lower_float_matmul,
+            )
+
+            preceding = lower_float_matmul(
+                result, node, operations[node.name], preceding
+            )
+        rewritten.extend(preceding)
         rewritten.append(node)
         rewritten.extend(following)
     del result.graph.node[:]

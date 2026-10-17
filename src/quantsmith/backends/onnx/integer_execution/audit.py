@@ -16,7 +16,7 @@ from onnxruntime.capi.onnxruntime_pybind11_state import (
 from pydantic import BaseModel, ConfigDict
 
 from quantsmith.domain import Absent
-from quantsmith.plan import QuantizationPlan, QuantizeOutput
+from quantsmith.plan import FloatOutput, QuantizationPlan, QuantizeOutput
 from quantsmith.result import FailureKind, Ok, QuantSmithError, Result, failure
 
 
@@ -101,7 +101,13 @@ def inspect_execution(
         operation.node
         for plan in plans
         for operation in plan.operations
-        if isinstance(operation, QuantizeOutput)
+        if isinstance(operation, QuantizeOutput | FloatOutput)
+    }
+    float_outputs = {
+        operation.node
+        for plan in plans
+        for operation in plan.operations
+        if isinstance(operation, FloatOutput)
     }
     integer: list[IntegerNode] = []
     floating: list[UnverifiedNode] = []
@@ -122,6 +128,12 @@ def inspect_execution(
             )
             continue
         allowed = _INTEGER_OPERATORS.get(node.op_type, frozenset())
+        if name in float_outputs:
+            allowed = (
+                frozenset({"MatMulIntegerToFloat"})
+                if node.op_type == "MatMul"
+                else frozenset()
+            )
         matches = [
             candidate
             for candidate in compiled.graph.node

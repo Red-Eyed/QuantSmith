@@ -1,5 +1,20 @@
 # Global causal Transformer development log
 
+## 2026-10-17 — Integrated integer float-output mode
+
+Expose `matmul_outputs` on the global-transformer example and preserve quantized
+outputs as the default. The opt-in mode uses direct integer MatMul with FP32
+outputs plus exact quantizer reuse. All 15 learned projections are source-audited;
+compiled activation quantizers remain at nine, dequantizers fall from 25 to zero,
+and two QuickGelu fusions return. MinMax's facade/example graphs are byte-identical.
+
+Public MinMax and Percentile results match the prior experimental candidates bit
+for bit over 1,024 contexts each. Integrated MinMax timings are 85.33 / 84.50 µs
+versus INT8/reuse 91.83 / 90.88 µs, with ROM 305.5 versus 344.4 KiB. Top-1 is
+40.695%, perplexity 7.93785 on 32,768 targets; FP32 is 40.750%, 7.92877. FP32
+latency is 84.08 / 83.33 µs, so this approaches rather than beats FP32 execution.
+All 893 tests pass. See [design and restrictions](../../docs/float-matmul-outputs.md).
+
 ## 2026-10-17 — Executed-output smoothing selection
 
 Global-transformer output MSE prefers the unsmoothed baseline for MinMax and

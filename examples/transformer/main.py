@@ -37,12 +37,24 @@ from quantsmith.algorithms.static import StaticW8A8
 from quantsmith.backends.onnx import describe
 from quantsmith.backends.onnx.stages import (
     QuantizationStage,
+    ReuseQuantizersStage,
     TransformStage,
     VerifyStage,
 )
 from quantsmith.calibration import Percentile, Samples
 from quantsmith.domain import FloatArray, Graph, InputArray, Node
-from quantsmith.pipeline import FloatGraph, Pipeline, QuantizationResult, RuntimeScaling
+from quantsmith.pipeline import (
+    FloatGraph,
+    Pipeline,
+    QuantizationResult,
+    QuantizedGraph,
+    RuntimeScaling,
+)
+from quantsmith.pipeline.policies import (
+    FloatMatMulOutputs,
+    MatMulOutputs,
+    QuantizedMatMulOutputs,
+)
 from quantsmith.result import (
     Err,
     FailureKind,
@@ -174,14 +186,42 @@ def recipes(config: Config) -> Recipes[Pipeline[FloatGraph, QuantizationResult]]
         ),
     )
     return Recipes(
-        minmax=Pipeline(QuantizationStage(minmax, config.outputs)).then(VerifyStage()),
-        percentile=Pipeline(QuantizationStage(percentile, config.outputs)).then(
-            VerifyStage()
+        minmax=finish_recipe(
+            Pipeline(
+                QuantizationStage(
+                    minmax, config.outputs, matmul_outputs=config.matmul_outputs
+                )
+            ),
+            config.matmul_outputs,
         ),
-        smoothquant=Pipeline(TransformStage(smoothing, RuntimeScaling()))
-        .then(QuantizationStage(minmax, config.outputs))
-        .then(VerifyStage()),
+        percentile=finish_recipe(
+            Pipeline(
+                QuantizationStage(
+                    percentile, config.outputs, matmul_outputs=config.matmul_outputs
+                )
+            ),
+            config.matmul_outputs,
+        ),
+        smoothquant=finish_recipe(
+            Pipeline(TransformStage(smoothing, RuntimeScaling())).then(
+                QuantizationStage(
+                    minmax, config.outputs, matmul_outputs=config.matmul_outputs
+                )
+            ),
+            config.matmul_outputs,
+        ),
     )
+
+
+def finish_recipe(
+    program: Pipeline[FloatGraph, QuantizedGraph], outputs: MatMulOutputs
+) -> Pipeline[FloatGraph, QuantizationResult]:
+    """Reuse exact activation quantizers for the opt-in float-output recipe."""
+    match outputs:
+        case FloatMatMulOutputs():
+            return program.then(ReuseQuantizersStage()).then(VerifyStage())
+        case QuantizedMatMulOutputs():
+            return program.then(VerifyStage())
 
 
 def calibration_samples(data: Dataset) -> Samples:

@@ -8,6 +8,7 @@ from pydantic_settings import CliSuppress, SettingsConfigDict
 
 from examples._shared.training.schema import Config as BaseConfig
 from examples._shared.training.schema import TaskKind
+from quantsmith.pipeline.policies import MatMulOutputs, QuantizedMatMulOutputs
 
 
 class Config(BaseConfig):
@@ -18,6 +19,9 @@ class Config(BaseConfig):
         default=(TaskKind.TRANSFORMER,)
     )
     output: Path = Field(default=Path("work_dir/artifacts/transformer"))
+    matmul_outputs: MatMulOutputs = Field(
+        default_factory=QuantizedMatMulOutputs, discriminator="kind"
+    )
 
     mlp_steps: CliSuppress[int] = Field(default=300, ge=1)
     rnn_steps: CliSuppress[int] = Field(default=600, ge=1)

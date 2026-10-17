@@ -61,7 +61,17 @@ class QuantizeOutput(BaseModel):
     encoding: Encoding = Field()
 
 
-type Operation = QuantizeInput | QuantizeOutput | QuantizeConstant | RescaleInput
+class FloatOutput(BaseModel):
+    """Execute quantized inputs with a floating output and no output rounding."""
+
+    model_config = ConfigDict(frozen=True, strict=True, extra="forbid")
+    node: str = Field(min_length=1)
+    index: int = Field(ge=0, strict=True)
+
+
+type Operation = (
+    QuantizeInput | QuantizeOutput | FloatOutput | QuantizeConstant | RescaleInput
+)
 
 
 class QuantizationPlan(BaseModel):
@@ -81,7 +91,10 @@ class QuantizationPlan(BaseModel):
         transforms: set[str] = set()
         for operation in self.operations:
             match operation:
-                case QuantizeOutput(node=node, index=index):
+                case (
+                    QuantizeOutput(node=node, index=index)
+                    | FloatOutput(node=node, index=index)
+                ):
                     if (node, index) in outputs:
                         raise ValueError("duplicate output quantization")
                     outputs.add((node, index))
@@ -100,6 +113,14 @@ class QuantizationPlan(BaseModel):
                     assert_never(operation)
         if transforms and (keys or outputs):
             raise ValueError("lower transforms and recalibrate before quantizing")
+        for operation in self.operations:
+            if (
+                isinstance(operation, FloatOutput)
+                and not {(operation.node, 0), (operation.node, 1)} <= keys
+            ):
+                raise ValueError(
+                    "float output requires quantized activation and weight inputs"
+                )
         affected = transforms | {node for node, _ in keys | outputs}
         if affected.intersection(self.excluded):
             raise ValueError("excluded nodes cannot have plan operations")

@@ -23,7 +23,15 @@ from quantsmith.calibration.contracts import DEFAULT_CHANNEL_HISTOGRAM_BYTES
 from quantsmith.domain import IntegerType
 from quantsmith.optimization.smoothing import ModelOutputs, Observations
 from quantsmith.pipeline import FloatGraph, JointFoldOnly, Pipeline, QuantizationResult
-from quantsmith.pipeline.policies import Folding, FoldOnly, Outputs, ProducerOutputs
+from quantsmith.pipeline.policies import (
+    FloatMatMulOutputs,
+    Folding,
+    FoldOnly,
+    MatMulOutputs,
+    Outputs,
+    ProducerOutputs,
+    QuantizedMatMulOutputs,
+)
 from quantsmith.rules import ByOperator, Exclude, Rule, Rules
 
 
@@ -105,6 +113,9 @@ class QuantizationConfig(BaseModel):
         | OutputSelectedSmoothingConfig
     ) = Field(default_factory=NoSmoothing, discriminator="kind")
     outputs: Outputs = Field(default_factory=ProducerOutputs, discriminator="kind")
+    matmul_outputs: MatMulOutputs = Field(
+        default_factory=QuantizedMatMulOutputs, discriminator="kind"
+    )
     boundary_calibration: FollowCalibration | MinMaxConfig | PercentileConfig = Field(
         default_factory=MinMaxConfig, discriminator="kind"
     )
@@ -142,14 +153,17 @@ class QuantizationConfig(BaseModel):
             case _:
                 assert_never(self.boundary_calibration)
         quantization = QuantizationStage(
-            supported(self.algorithm()), self.outputs, boundary
+            supported(self.algorithm()), self.outputs, boundary, self.matmul_outputs
         )
+        static = Pipeline(quantization)
+        if isinstance(self.matmul_outputs, FloatMatMulOutputs):
+            static = static.then(ReuseQuantizersStage())
         match self.smoothing:
             case NoSmoothing():
-                return Pipeline(quantization).then(VerifyStage())
+                return static.then(VerifyStage())
             case SmoothQuantConfig(alpha=alpha, folding=folding):
                 transform = TransformStage(supported(SmoothQuant(alpha=alpha)), folding)
-                return Pipeline(transform).then(quantization).then(VerifyStage())
+                return Pipeline(transform).then(static.step).then(VerifyStage())
             case JointSmoothQuantConfig(alpha=alpha, channels=channels):
                 return (
                     Pipeline(joint_transform(alpha, channels))

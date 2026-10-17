@@ -10,6 +10,7 @@ from examples._shared.schema import Coverage
 from quantsmith.backends.onnx.integer_execution.audit import ExecutionReport
 from quantsmith.domain import Absent, FloatArray, Graph, IntArray, PerChannel, PerTensor
 from quantsmith.plan import (
+    FloatOutput,
     Operation,
     QuantizationPlan,
     QuantizeConstant,
@@ -74,10 +75,24 @@ class OutputRecord(QuantizeRecord):
     target: Literal["output"]
 
 
+class FloatOutputRecord(TypedDict):
+    """Record omitted output rounding without inventing an output encoding."""
+
+    node: str
+    index: int
+    target: Literal["float_output"]
+
+
 class PlanRecord(TypedDict):
     """Preserve stage operations and exclusions in the existing JSON format."""
 
-    operations: list[QuantizeRecord | OutputRecord | ConstantRecord | RescaleRecord]
+    operations: list[
+        QuantizeRecord
+        | OutputRecord
+        | ConstantRecord
+        | RescaleRecord
+        | FloatOutputRecord
+    ]
     excluded: tuple[str, ...]
 
 
@@ -93,9 +108,11 @@ def array_record(array: FloatArray | IntArray) -> ArrayRecord:
 
 def operation_record(
     operation: Operation,
-) -> QuantizeRecord | OutputRecord | ConstantRecord | RescaleRecord:
+) -> QuantizeRecord | OutputRecord | ConstantRecord | RescaleRecord | FloatOutputRecord:
     """Serialize every supported operation without an untyped JSON fallback."""
     match operation:
+        case FloatOutput(node=node, index=index):
+            return FloatOutputRecord(node=node, index=index, target="float_output")
         case (
             QuantizeInput(node=node, index=index, encoding=encoding)
             | QuantizeOutput(node=node, index=index, encoding=encoding)
@@ -182,7 +199,12 @@ def coverage(graph: Graph, plans: tuple[QuantizationPlan, ...]) -> Coverage:
                         quantized.append(name)
                 case RescaleInput(node=name):
                     transformed.append(name)
-                case QuantizeInput() | QuantizeOutput() | QuantizeConstant():
+                case (
+                    QuantizeInput()
+                    | QuantizeOutput()
+                    | QuantizeConstant()
+                    | FloatOutput()
+                ):
                     pass
                 case _:
                     assert_never(operation)

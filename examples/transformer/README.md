@@ -95,3 +95,18 @@ The result contains `model` and inspectable `plans`, or a typed `Err` diagnostic
 Training uses disjoint 80/10/10 text spans and a training-only vocabulary. The
 default is 600 CPU steps, 64 calibration contexts, and 128 held-out contexts.
 These are small trained character models, not pretrained language-model benchmarks.
+
+## Integer MatMul with floating outputs
+
+The opt-in policy keeps learned projections integer and returns FP32 directly to
+float consumers. It omits output requantization and enables exact quantizer reuse:
+
+```sh
+uv run --locked --group examples -m examples.transformer.main --methods minmax --matmul-outputs '{"kind":"float"}'
+```
+
+The ordinary `{"kind":"quantized"}` policy remains the default. This choice is
+independent of activation-function calibration. On the saved global checkpoint,
+the measured candidate approached FP32 latency with much smaller serialized
+storage and a small observed task difference. See
+[design, restrictions and matched measurements](../../docs/float-matmul-outputs.md).

@@ -16,6 +16,11 @@ from quantsmith.backends.onnx.integer_execution.support import restriction
 from quantsmith.backends.onnx.ort_scaling.boundaries import BoundaryNames
 from quantsmith.calibration import Requirement
 from quantsmith.domain import Absent, Encoding, Graph, Node, PerTensor
+from quantsmith.pipeline.policies import (
+    FloatMatMulOutputs,
+    MatMulOutputs,
+    QuantizedMatMulOutputs,
+)
 from quantsmith.plan import QuantizationPlan, QuantizeInput, QuantizeOutput
 from quantsmith.result import (
     Err,
@@ -27,6 +32,8 @@ from quantsmith.result import (
     validate,
 )
 from quantsmith.rules import Exclude, Rule, Rules
+
+_QUANTIZED_OUTPUTS = QuantizedMatMulOutputs()
 
 
 def accumulator_safe_plan(
@@ -134,7 +141,11 @@ class ExecutionQuantizer:
 
 
 def _adapt(
-    model: ModelProto, graph: Graph, node: Node, decision: Algorithm | Exclude
+    model: ModelProto,
+    graph: Graph,
+    node: Node,
+    decision: Algorithm | Exclude,
+    matmul_outputs: MatMulOutputs,
 ) -> Algorithm | Exclude:
     """Complete built-in static methods while preserving custom implementations."""
     match decision:
@@ -143,6 +154,14 @@ def _adapt(
                 case str() as reason:
                     return Exclude(reason=reason)
                 case Absent():
+                    if node.op == "MatMul" and isinstance(
+                        matmul_outputs, FloatMatMulOutputs
+                    ):
+                        from quantsmith.backends.onnx.integer_execution import (
+                            float_output,
+                        )
+
+                        return float_output.float_matmul_algorithm(decision)
                     return ExecutionQuantizer(decision)
         case _:
             return decision
@@ -154,6 +173,7 @@ def execution_rules(
     rules: Rules[Algorithm],
     *,
     activation_function_aware: bool = False,
+    matmul_outputs: MatMulOutputs = _QUANTIZED_OUTPUTS,
 ) -> Rules[Algorithm]:
     """Own execution policy in the ORT shell, outside numerical algorithms."""
     configured = Rules[Algorithm](
@@ -161,7 +181,9 @@ def execution_rules(
         overrides=tuple(
             Rule(
                 selector=BoundaryNames(frozenset({node.name})),
-                decision=_adapt(model, graph, node, rules.resolve(node, graph)),
+                decision=_adapt(
+                    model, graph, node, rules.resolve(node, graph), matmul_outputs
+                ),
             )
             for node in graph.nodes
         ),

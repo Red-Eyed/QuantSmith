@@ -85,3 +85,15 @@ nonzero per-channel weight zero points, arbitrary batched matrix layouts or
 additional fused activation functions. Each expansion needs its own minimal
 numerical probe, quantizer representation, lowering and compiled execution audit.
 A successful kernel probe alone does not justify a production default.
+
+## Integrated float-output MatMul path
+
+`FloatMatMulOutputs()` now exposes an explicitly planned MatMulIntegerToFloat
+path: UINT8 per-tensor activations, rank-two constant symmetric INT8 weights with
+per-output-column scales, and FP32 output without output requantization. Vector,
+matrix and batched activation shapes, nonzero activation zero points, shared/public
+outputs and floating bias placement have numerical tests. Source-provenance audits
+require this exact integer kernel. Reconstruction explicitly rejects the policy.
+Other MatMulIntegerToFloat layouts and signedness remain unverified; the direct
+QLinearConv/QLinearMatMul probe table above is unchanged. See
+[the integrated contract](float-matmul-outputs.md).

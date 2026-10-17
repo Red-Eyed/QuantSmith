@@ -24,3 +24,9 @@ or backend objects, and must be applied to their original graph revision.
 `then` returns `quantsmith.result.Ok(plan)` or `Err(QuantSmithError(...))` with
 the `conflict` category. Direct plan constructors use normal Pydantic validation
 exceptions.
+
+`FloatOutput` explicitly omits producer-output rounding after quantized input
+computation. It requires activation/weight input operations and conflicts with
+`QuantizeOutput` on that output. The initial ORT lowering supports integer MatMul
+with FP32 output. Saved JSON marks it with `target: "float_output"` and no output
+encoding. See [the execution design](../../../docs/float-matmul-outputs.md).

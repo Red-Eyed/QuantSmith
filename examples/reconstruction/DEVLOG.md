@@ -1,5 +1,12 @@
 # Reconstruction experiments
 
+## 2026-10-17 — Reject static float-output matrix policy explicitly
+
+Reconstruction rejects `FloatMatMulOutputs` rather than silently ignoring the
+requested static integer output representation. The learned-code path retains
+its established execution contract; six layout regression cases verify the
+explicit failure. Existing reconstruction modes are unchanged.
+
 ## 2026-10-17 — Keep static selection out of reconstruction
 
 The new executed-output smoothing mode scores static integer graphs. Reconstruction

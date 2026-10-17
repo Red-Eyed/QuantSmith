@@ -22,8 +22,10 @@ from quantsmith.pipeline.policies import (
     FoldOnly,
     FunctionOutputs,
     JointFoldOnly,
+    MatMulOutputs,
     Outputs,
     ProducerOutputs,
+    QuantizedMatMulOutputs,
     RuntimeScaling,
 )
 from quantsmith.pipeline.state import FloatGraph, QuantizationResult, QuantizedGraph
@@ -134,6 +136,7 @@ class QuantizationStage:
     rules: Rules[Algorithm]
     outputs: Outputs = field(default_factory=ProducerOutputs)
     boundary_calibration: Calibration = field(default_factory=MinMax)
+    matmul_outputs: MatMulOutputs = field(default_factory=QuantizedMatMulOutputs)
 
     def run(
         self, value: FloatGraph, context: CalibrationContext
@@ -155,6 +158,7 @@ class QuantizationStage:
                 self.boundary_calibration,
             ),
             activation_function_aware=isinstance(self.outputs, FunctionOutputs),
+            matmul_outputs=self.matmul_outputs,
         )
         match build_plan(
             graph,

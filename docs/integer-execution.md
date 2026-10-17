@@ -159,6 +159,13 @@ values from upstream integer regions.
 
 ## Verification and result API
 
+An opt-in `FloatMatMulOutputs()` policy represents integer MatMul with direct
+FP32 output. Its plan uses `FloatOutput` instead of an output encoding, and the
+audit specifically requires source-matched `MatMulIntegerToFloat` execution.
+Inputs remain UINT8 and weights symmetric per-output-column INT8 in the initial
+verified contract. Conv/Gemm output behavior is unchanged. See
+[design, API and measurements](float-matmul-outputs.md).
+
 `QuantizationResult.execution` contains an `ExecutionReport` for the static pipeline:
 
 - ORT runtime version and CPU provider identity;

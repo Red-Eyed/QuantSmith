@@ -32,6 +32,7 @@ from quantsmith.domain import (
     PerChannel,
 )
 from quantsmith.pipeline import Pipeline, QuantizationResult
+from quantsmith.pipeline.policies import FloatMatMulOutputs
 from quantsmith.plan import QuantizationPlan, QuantizeConstant, QuantizeInput
 from quantsmith.reconstruction import Conv2d, Linear, Problem, Reconstructor, Solution
 from quantsmith.reconstruction.replay import paired_replay
@@ -304,6 +305,12 @@ def reconstruct(
     rules control exclusions. Replay must be deterministic and caller-bounded.
     Each returned plan applies to the preceding plan's lowered graph revision.
     """
+    if isinstance(config.matmul_outputs, FloatMatMulOutputs):
+        return failure(
+            FailureKind.UNSUPPORTED,
+            "reconstruction",
+            "float integer MatMul outputs require the static execution pipeline",
+        )
     match config.smoothing:
         case NoSmoothing():
             return _reconstruct(model, samples, rules, config=config)

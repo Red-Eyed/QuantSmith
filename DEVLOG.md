@@ -1,5 +1,26 @@
 # QuantSmith development log
 
+## 2026-10-17 — Integrate integer MatMul with floating outputs
+
+Add the opt-in typed `FloatMatMulOutputs` policy and explicit `FloatOutput` plan
+operation. The ORT shell preserves calibrated input/weight encodings, omits output
+rounding and unused output statistics, and directly lowers supported matrix
+products to `MatMulIntegerToFloat`. Source-provenance audits require that kernel.
+Exact activation-quantizer reuse remains an explicit existing step; the public
+configuration and global example compose it automatically for this mode.
+
+All 893 tests pass with Ruff and strict Pyrefly, including 52 new regression cases.
+Public MinMax and Percentile outputs are bit-identical to the measured experimental
+candidates over 1,024 contexts / 32,768 targets each; the global example MinMax
+export is byte-identical to the facade export. Defaults remain unchanged.
+
+Fresh integrated MinMax timings are 85.33 / 84.50 µs versus current INT8/reuse
+91.83 / 90.88 µs, about 7% lower latency. ROM drops 344.4 → 305.5 KiB. FP32 remains
+slightly faster (84.08 / 83.33 µs) with a larger 527.4 KiB file. Expanded MinMax
+top-1 is 40.695% versus FP32 40.750%, and perplexity 7.93785 versus 7.92877. These
+small trained-model observations do not establish population accuracy parity or
+a repeatable FP32 speedup. See [design and full evidence](docs/float-matmul-outputs.md).
+
 ## 2026-10-17 — Executed-output smoothing selection and explicit boundaries
 
 Make inserted-boundary calibration declarative (commit `cf19cea`), retaining
