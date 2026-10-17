@@ -4,8 +4,11 @@ from collections.abc import Mapping
 
 import numpy as np
 
+from quantsmith.calibration.channel_histogram import channel_histograms
 from quantsmith.calibration.contracts import (
     Calibration,
+    ChannelHistogramStats,
+    ChannelRequirement,
     Evaluator,
     HistogramStats,
     MinMaxStats,
@@ -27,6 +30,8 @@ from quantsmith.result import (
 
 __all__ = [
     "Calibration",
+    "ChannelHistogramStats",
+    "ChannelRequirement",
     "Evaluator",
     "HistogramStats",
     "MinMax",
@@ -34,6 +39,7 @@ __all__ = [
     "Percentile",
     "Requirement",
     "Samples",
+    "channel_histograms",
     "collect",
     "count_histogram",
     "extrema",

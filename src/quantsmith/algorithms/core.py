@@ -57,17 +57,30 @@ def select_algorithms(
                         needs.append(requirement_needs)
                 selected.append(SelectedNode(node=node, algorithm=algorithm))
     ranges = tuple(
-        dict.fromkeys(item for need in needs for item in need.ranges + need.histograms)
+        dict.fromkeys(
+            item
+            for need in needs
+            for item in need.ranges
+            + need.histograms
+            + tuple(request.range for request in need.channel_histograms)
+        )
     )
     histograms = tuple(
         dict.fromkeys(item for need in needs for item in need.histograms)
+    )
+    channel_histograms = tuple(
+        dict.fromkeys(item for need in needs for item in need.channel_histograms)
     )
     return Ok(
         Selection(
             graph=graph,
             selected=tuple(selected),
             excluded=tuple(excluded),
-            needs=Needs(ranges=ranges, histograms=histograms),
+            needs=Needs(
+                ranges=ranges,
+                histograms=histograms,
+                channel_histograms=channel_histograms,
+            ),
         )
     )
 

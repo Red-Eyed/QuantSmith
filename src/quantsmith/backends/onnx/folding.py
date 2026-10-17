@@ -1,6 +1,7 @@
 """Transactional fold-only smoothing with explicit accepted/skipped outcomes."""
 
 from collections import Counter
+from typing import assert_never
 
 import numpy as np
 import onnx
@@ -104,7 +105,7 @@ def _fold_target(
     return Absent(reason="activation function reaches a graph input")
 
 
-def _fold_affine(model: ModelProto, introduced: str) -> ModelProto:
+def fold_affine(model: ModelProto, introduced: str) -> ModelProto:
     """Fold private last-channel Div nodes while cloning shared parameter storage."""
     result = normalize(model)
     ranks = {
@@ -180,7 +181,7 @@ def _attempt(
             return error
         case Ok(candidate):
             pass
-    match admit("fold affine scales", lambda: _fold_affine(candidate, introduced)):
+    match admit("fold affine scales", lambda: fold_affine(candidate, introduced)):
         case Err() as error:
             return error
         case Ok(candidate):
@@ -214,13 +215,17 @@ def fold_only(
         match _attempt(current, operation):
             case Err() as error:
                 return error
-            case Ok(Unfoldable() as outcome):
-                outcomes.append(outcome)
-                skipped.append(operation.node)
-            case Ok(ModelProto() as candidate):
-                current = candidate
-                accepted.append(operation)
-                outcomes.append(Folded(operation.node))
+            case Ok(outcome):
+                match outcome:
+                    case Unfoldable():
+                        outcomes.append(outcome)
+                        skipped.append(operation.node)
+                    case ModelProto() as candidate:
+                        current = candidate
+                        accepted.append(operation)
+                        outcomes.append(Folded(operation.node))
+                    case _ as remaining:
+                        assert_never(remaining)
     applied = QuantizationPlan(
         operations=tuple(accepted), excluded=plan.excluded + tuple(skipped)
     )

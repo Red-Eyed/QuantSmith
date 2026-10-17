@@ -101,3 +101,14 @@ execution remain in the shell, with explicit `Ok`/`Err` handling.
 
 The public fluent facade and fold-only policy are documented in the
 [typed pipeline design](../../../../docs/declarative-pipeline.md).
+
+## Complete-group folding and exact quantizer reuse
+
+`group_folding` applies only complete common-scale consumer groups; public values,
+excluded consumers, incompatible scales or axes, and unsupported producer paths
+retain the original region. `quantizer_reuse.plan_reuse` produces immutable aliases
+from identical private QuantizeLinear inputs, constant encodings and attributes.
+Application owns its graph; the final ORT audit checks the resulting model.
+`ReuseQuantizersStage` is an explicit typed transition between quantized revisions.
+The Joint SmoothQuant configuration declares it; existing recipes remain unchanged.
+See [design and measured tradeoffs](../../../../docs/joint-smoothing.md).

@@ -144,3 +144,20 @@ The [typed pipeline design](declarative-pipeline.md) describes the implemented
 open `Step` protocol, graph phases, ADT policies, and fold-only smoothing.
 Concrete ORT steps declare their transitions; the shell no longer infers stage
 kinds from algorithm output. There is no backend selection abstraction.
+
+## Coordinated smoothing and shared quantizers
+
+The [joint smoothing experiment](joint-smoothing.md) adds a pure planning algorithm,
+transactional complete-group affine folding, and an exact quantizer-reuse step using
+the existing typed pipeline contracts. The last step precedes compilation and audit.
+It reuses identical private computations and preserves grids; joint smoothing changes
+the grids after fresh calibration. Their quality and latency evidence are separate.
+
+## Per-channel distribution statistics
+
+`Needs.channel_histograms` declares typed single-axis requests. The calibration
+shell establishes extrema, checks the configured memory cap, and streams replay
+into dedicated immutable channel distributions. Pure numerical policies choose
+balancing ranges; lowering and fresh subsequent calibration retain their revision
+boundaries. The existing per-tensor calibration protocol is unchanged. See
+[contracts, memory bounds and measurements](channel-histograms.md).

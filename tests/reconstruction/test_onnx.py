@@ -11,7 +11,11 @@ from onnx import ModelProto, TensorProto, helper, numpy_helper
 from quantsmith.backends.onnx import lower
 from quantsmith.backends.onnx.reconstruction import reconstruct
 from quantsmith.calibration import Samples
-from quantsmith.config import QuantizationConfig, SmoothQuantConfig
+from quantsmith.config import (
+    JointSmoothQuantConfig,
+    QuantizationConfig,
+    SmoothQuantConfig,
+)
 from quantsmith.domain import Encoding, FloatArray, PerChannel
 from quantsmith.pipeline import RuntimeScaling
 from quantsmith.plan import QuantizationPlan, QuantizeConstant, QuantizeInput
@@ -171,8 +175,13 @@ def test_explicit_exclusion(shared_model: ModelProto, shared_samples: Samples) -
     assert second.input[1] == "w"
 
 
+@pytest.mark.parametrize(
+    "smoothing", [SmoothQuantConfig(folding=RuntimeScaling()), JointSmoothQuantConfig()]
+)
 def test_smoothing_precedes_reconstruction(
-    shared_model: ModelProto, shared_samples: Samples
+    shared_model: ModelProto,
+    shared_samples: Samples,
+    smoothing: SmoothQuantConfig | JointSmoothQuantConfig,
 ) -> None:
     """Smooth once, then replay on the transformed reference and current graph."""
     rules: Rules[Reconstructor] = Rules(default=GPTQv2())
@@ -181,9 +190,7 @@ def test_smoothing_precedes_reconstruction(
             shared_model,
             shared_samples,
             rules,
-            config=QuantizationConfig(
-                smoothing=SmoothQuantConfig(folding=RuntimeScaling())
-            ),
+            config=QuantizationConfig(smoothing=smoothing),
         )
     )
     assert len(result.plans) > 2

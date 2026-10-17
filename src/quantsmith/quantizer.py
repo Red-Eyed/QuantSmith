@@ -10,6 +10,7 @@ from onnx import ModelProto
 
 from quantsmith.backends.onnx.pipeline import quantize
 from quantsmith.calibration import Samples
+from quantsmith.calibration.contracts import DEFAULT_CHANNEL_HISTOGRAM_BYTES
 from quantsmith.config import QuantizationConfig
 from quantsmith.domain import InputArray
 from quantsmith.pipeline import FloatGraph, Pipeline, QuantizationResult
@@ -29,6 +30,7 @@ class Configured:
 
     pipeline: Pipeline[FloatGraph, QuantizationResult]
     histogram_bins: int
+    max_channel_histogram_bytes: int
 
 
 @dataclass(frozen=True)
@@ -48,7 +50,13 @@ class Quantizer[State]:
     @classmethod
     def from_config(cls, config: QuantizationConfig) -> Quantizer[Configured]:
         """Compile a validated configuration without running or capturing a model."""
-        return Quantizer(Configured(config.pipeline(), config.histogram_bins))
+        return Quantizer(
+            Configured(
+                config.pipeline(),
+                config.histogram_bins,
+                config.max_channel_histogram_bytes,
+            )
+        )
 
     @classmethod
     def from_pipeline(
@@ -56,11 +64,16 @@ class Quantizer[State]:
         program: Pipeline[FloatGraph, QuantizationResult],
         *,
         histogram_bins: int = 2048,
+        max_channel_histogram_bytes: int = DEFAULT_CHANNEL_HISTOGRAM_BYTES,
     ) -> Quantizer[Configured]:
         """Admit custom typed stages directly, without registration or string lookup."""
         if histogram_bins < 2:
             raise ValueError("histogram_bins must be at least two")
-        return Quantizer(Configured(program, histogram_bins))
+        if max_channel_histogram_bytes < 1:
+            raise ValueError("max_channel_histogram_bytes must be positive")
+        return Quantizer(
+            Configured(program, histogram_bins, max_channel_histogram_bytes)
+        )
 
     def quantize(
         self: Quantizer[Configured], model: ModelProto
@@ -99,4 +112,5 @@ class Quantizer[State]:
             source,
             configuration.pipeline,
             histogram_bins=configuration.histogram_bins,
+            max_channel_histogram_bytes=configuration.max_channel_histogram_bytes,
         )

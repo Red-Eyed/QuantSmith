@@ -19,7 +19,14 @@ class FoldOnly(BaseModel):
     kind: Literal["fold_only"] = Field(default="fold_only")
 
 
-type Folding = RuntimeScaling | FoldOnly
+class JointFoldOnly(BaseModel):
+    """Absorb a common scale only when its complete consumer group participates."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    kind: Literal["joint_fold_only"] = Field(default="joint_fold_only")
+
+
+type Folding = RuntimeScaling | FoldOnly | JointFoldOnly
 
 
 class ProducerOutputs(BaseModel):

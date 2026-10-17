@@ -2,7 +2,14 @@
 
 from quantsmith.algorithms.contracts import Algorithm, Statistics
 from quantsmith.algorithms.core import assemble_plan, select_algorithms
-from quantsmith.calibration import Evaluator, Samples, collect, histograms
+from quantsmith.calibration import (
+    Evaluator,
+    Samples,
+    channel_histograms,
+    collect,
+    histograms,
+)
+from quantsmith.calibration.contracts import DEFAULT_CHANNEL_HISTOGRAM_BYTES
 from quantsmith.domain import Graph
 from quantsmith.plan import QuantizationPlan
 from quantsmith.result import Err, Ok, QuantSmithError, Result
@@ -16,6 +23,7 @@ def build_plan(
     rules: Rules[Algorithm],
     *,
     histogram_bins: int = 2048,
+    max_channel_histogram_bytes: int = DEFAULT_CHANNEL_HISTOGRAM_BYTES,
 ) -> Result[QuantizationPlan, QuantSmithError]:
     """Select algorithms, collect statistics, and assemble one graph revision's plan.
 
@@ -43,4 +51,17 @@ def build_plan(
             return error
         case Ok(bins):
             pass
-    return assemble_plan(selection, Statistics(ranges=ranges, histograms=bins))
+    match channel_histograms(
+        evaluator,
+        samples,
+        {item: ranges[item.range] for item in selection.needs.channel_histograms},
+        histogram_bins,
+        max_bytes=max_channel_histogram_bytes,
+    ):
+        case Err() as error:
+            return error
+        case Ok(channels):
+            return assemble_plan(
+                selection,
+                Statistics(ranges=ranges, histograms=bins, channel_histograms=channels),
+            )

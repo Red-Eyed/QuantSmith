@@ -44,6 +44,30 @@ class Report(BaseModel):
             7,
         ),
         (
+            "from quantsmith.pipeline import Pipeline\n"
+            "from quantsmith.backends.onnx.stages import ReuseQuantizersStage\n"
+            "from quantsmith.config import joint_transform\n"
+            "value = Pipeline(joint_transform(0.5)).then(ReuseQuantizersStage())\n",
+            "bad-argument-type",
+            4,
+        ),
+        (
+            "from quantsmith.calibration import ChannelRequirement\n"
+            "value = ChannelRequirement(tensor='x')\n",
+            "missing-argument",
+            2,
+        ),
+        (
+            "from quantsmith.algorithms import Statistics\n"
+            "from quantsmith.calibration import "
+            "ChannelHistogramStats, ChannelRequirement\n"
+            "def mutate(stats: Statistics, key: ChannelRequirement, "
+            "value: ChannelHistogramStats) -> None:\n"
+            "    stats.channel_histograms[key] = value\n",
+            "unsupported-operation",
+            4,
+        ),
+        (
             "from quantsmith.domain import PerChannel\nvalue = PerChannel(axis=1)\n",
             "",
             0,

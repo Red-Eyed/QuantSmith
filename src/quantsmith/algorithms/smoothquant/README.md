@@ -38,3 +38,12 @@ the floating-point function. It does not remove outliers by clipping them.
 - [Authors' implementation](https://github.com/mit-han-lab/smoothquant).
 - [QuantSmith implementation](./__init__.py); its generic edge-local transforms do not
   claim to reproduce the paper's complete LLM deployment and kernel pipeline.
+
+## Shared activation inputs
+
+[Joint SmoothQuant](joint/README.md) uses one channel-scale vector for compatible
+sibling projections. Its ORT policy folds only complete groups and recalibrates
+before quantization. The optional method also declares exact activation-quantizer
+reuse before the integer audit. These are separate operations: smoothing can change
+accuracy; exact reuse preserves the selected grids. See the
+[measured experiment and restrictions](../../../../docs/joint-smoothing.md).

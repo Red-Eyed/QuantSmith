@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from quantsmith.calibration import Samples
+from quantsmith.calibration.contracts import DEFAULT_CHANNEL_HISTOGRAM_BYTES
 from quantsmith.result import Err, Ok, QuantSmithError, Result
 
 
@@ -15,6 +16,7 @@ class CalibrationContext:
 
     samples: Samples
     histogram_bins: int
+    max_channel_histogram_bytes: int = DEFAULT_CHANNEL_HISTOGRAM_BYTES
 
 
 class Step[Before, After](Protocol):

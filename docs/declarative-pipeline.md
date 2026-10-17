@@ -188,3 +188,21 @@ settings. No new latency, RAM, or task-quality improvement is claimed from this
 refactor. This identity check covers the accepted runtime-scaling recipes;
 fold-only smoothing has separate numerical and rollback tests, and still needs
 whole-model task and performance acceptance before replacing those recipes.
+
+## Joint smoothing and exact reuse
+
+`JointSmoothQuantConfig(alpha=...)` declares joint channel balancing, complete-group
+folding, fresh static calibration, `ReuseQuantizersStage`, then integer verification.
+The reuse step composes as `QuantizedGraph → QuantizedGraph`; it can also be added
+to custom MinMax or Percentile programs without changing their grids. Neither
+ordinary configurations nor accepted model recipes gain this stage implicitly.
+See the [design, measurements and restrictions](joint-smoothing.md).
+
+## Channel histogram calibration
+
+Joint smoothing's typed `channels` selection declares extrema, channel percentile,
+or channel histogram MSE requirements. The shell streams these into dedicated
+records and passes immutable statistics to the numerical planner. Configured
+`histogram_bins` and `max_channel_histogram_bytes` flow through the facade and
+calibration context; memory-budget failures are explicit. See the
+[design and measured comparison](channel-histograms.md).

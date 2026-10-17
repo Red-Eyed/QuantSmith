@@ -141,3 +141,11 @@ Want to extend a method or reproduce a result? See [CONTRIBUTION.md](CONTRIBUTIO
 
 See the [typed pipeline design](docs/declarative-pipeline.md) for lifecycle types,
 extension points, policy migration, and fold-only smoothing restrictions.
+
+[Joint SmoothQuant and exact quantizer reuse](docs/joint-smoothing.md) add coordinated
+offline smoothing and an optional step that reuses identical activation quantizers.
+The report separates lossless reuse from changes in quantized task accuracy.
+
+[Per-channel histogram calibration](docs/channel-histograms.md) provides typed
+percentile and histogram-MSE policies for joint smoothing, streamed collection,
+and explicit memory bounds, with the full five-model comparison.

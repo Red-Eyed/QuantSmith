@@ -31,6 +31,13 @@ from examples.windowed_transformer import main as windowed_example
 from examples.windowed_transformer.model import WindowedCharacterTransformer
 from examples.wine_mlp import main as wine_example
 from examples.wine_mlp.model import WineMLP
+from quantsmith import Quantizer
+from quantsmith.algorithms.smoothquant.joint.ranges import (
+    ChannelExtrema,
+    ChannelMSE,
+    ChannelPercentile,
+    ChannelSelection,
+)
 from quantsmith.backends.onnx import describe
 from quantsmith.backends.onnx.integer_execution.activation_function_ranges import (
     activation_function_outputs,
@@ -40,9 +47,16 @@ from quantsmith.backends.onnx.integer_execution.audit import (
     compile_cpu,
 )
 from quantsmith.backends.onnx.pipeline import quantize
+from quantsmith.backends.onnx.stages import FinishTransform
+from quantsmith.config import (
+    JointSmoothQuantConfig,
+    QuantizationConfig,
+    joint_transform,
+)
 from quantsmith.domain import Absent, FloatArray, InputArray
 from quantsmith.pipeline import (
     FloatGraph,
+    Folded,
     FunctionOutputs,
     Pipeline,
     ProducerOutputs,
@@ -370,3 +384,52 @@ def test_cli_configuration_roundtrip(
     restored = config_type.model_validate_json(config.model_dump_json())
     assert restored == config
     assert restored.json_output
+
+
+@pytest.mark.parametrize(
+    "export_case", [TaskKind.TRANSFORMER, TaskKind.WINDOWED, *ModelName], indirect=True
+)
+@pytest.mark.parametrize(
+    "channels",
+    [ChannelExtrema(), ChannelPercentile(percentile=99.9), ChannelMSE(candidates=4)],
+)
+def test_joint_model_regions(
+    export_case: ExportCase, channels: ChannelSelection
+) -> None:
+    """Preserve float parity and integer projection coverage after group folding."""
+    data = ({export_case.input_name: export_case.inputs},)
+    program = Pipeline(joint_transform(0.5, channels)).then(FinishTransform())
+    transformed = expect_ok(
+        Quantizer.from_pipeline(program, histogram_bins=64)
+        .quantize(export_case.graph)
+        .calibrate(data)
+    )
+    if export_case.kind in {TaskKind.TRANSFORMER, TaskKind.WINDOWED}:
+        assert sum(isinstance(value, Folded) for value in transformed.folding) == 11
+    original = expect_ok(
+        OnnxEvaluator(export_case.graph).run(data[0], (export_case.output_name,))
+    )
+    folded = expect_ok(
+        OnnxEvaluator(transformed.model).run(data[0], (export_case.output_name,))
+    )
+    np.testing.assert_allclose(
+        folded[export_case.output_name],
+        original[export_case.output_name],
+        rtol=1e-5,
+        atol=1e-5,
+    )
+    result = expect_ok(
+        Quantizer.from_config(
+            QuantizationConfig(
+                smoothing=JointSmoothQuantConfig(channels=channels), histogram_bins=64
+            )
+        )
+        .quantize(export_case.graph)
+        .calibrate(data)
+    )
+    if export_case.kind in {TaskKind.TRANSFORMER, TaskKind.WINDOWED}:
+        assert_transformer_execution(export_case, result.execution, result.model)
+    else:
+        assert isinstance(result.execution, ExecutionReport)
+        assert result.execution.integer_nodes
+    assert not any(node.op_type == "QLinearMul" for node in result.model.graph.node)

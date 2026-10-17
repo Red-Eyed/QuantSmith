@@ -55,3 +55,17 @@ Keep sample processing streamed and aggregate storage bounded on the device.
 This GPU path is not implemented or benchmarked. Measure execution, reductions,
 transfers, and peak memory separately before claiming a speedup; the current
 instrumented evaluator is not a deployment-performance benchmark.
+
+## Per-channel histograms
+
+`channel_histograms` collects `ChannelRequirement(tensor, axis)` into separate
+`ChannelHistogramStats` records with channel-by-bin edges/counts. This leaves
+existing per-tensor calibration contracts precise. Collection streams replay,
+checks shape/range consistency, and enforces an explicit storage budget including
+owned result copies. Returned arrays and the `Statistics.channel_histograms`
+mapping are read-only. Channel extrema remain prerequisites for fixed replay bins.
+
+Joint smoothing can choose `ChannelExtrema`, `ChannelPercentile`, or `ChannelMSE`
+through its typed `channels` policy. The statistics can guide offline channel
+balancing while the executable retains per-tensor activation grids. See
+[design, memory bounds and measurements](../../../docs/channel-histograms.md).

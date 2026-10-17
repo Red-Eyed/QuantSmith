@@ -6,7 +6,13 @@ from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from quantsmith.calibration import HistogramStats, MinMaxStats, Requirement
+from quantsmith.calibration import (
+    ChannelHistogramStats,
+    ChannelRequirement,
+    HistogramStats,
+    MinMaxStats,
+    Requirement,
+)
 from quantsmith.domain import Graph, Node
 from quantsmith.plan import QuantizationPlan
 from quantsmith.result import QuantSmithError, Result
@@ -20,6 +26,7 @@ class Needs(BaseModel):
     )
     ranges: tuple[Requirement, ...] = Field(default=())
     histograms: tuple[Requirement, ...] = Field(default=())
+    channel_histograms: tuple[ChannelRequirement, ...] = Field(default=())
 
 
 class Statistics(BaseModel):
@@ -30,6 +37,9 @@ class Statistics(BaseModel):
     )
     ranges: Mapping[Requirement, MinMaxStats] = Field()
     histograms: Mapping[Requirement, HistogramStats] = Field()
+    channel_histograms: Mapping[ChannelRequirement, ChannelHistogramStats] = Field(
+        default_factory=dict, validate_default=True
+    )
 
     @field_validator("ranges")
     @classmethod
@@ -45,6 +55,14 @@ class Statistics(BaseModel):
         cls, value: Mapping[Requirement, HistogramStats]
     ) -> Mapping[Requirement, HistogramStats]:
         """Detach the histogram mapping from the caller's mutable collection."""
+        return MappingProxyType(dict(value))
+
+    @field_validator("channel_histograms")
+    @classmethod
+    def freeze_channel_histograms(
+        cls, value: Mapping[ChannelRequirement, ChannelHistogramStats]
+    ) -> Mapping[ChannelRequirement, ChannelHistogramStats]:
+        """Detach the channel distribution mapping from caller-owned mutable storage."""
         return MappingProxyType(dict(value))
 
 

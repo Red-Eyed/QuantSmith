@@ -4,10 +4,11 @@ import numpy as np
 from pydantic import BaseModel, ConfigDict, Field
 
 from quantsmith.algorithms.contracts import Needs, Statistics
+from quantsmith.algorithms.smoothquant.scaling import rescaling
 from quantsmith.calibration import Requirement, extrema
 from quantsmith.domain import Graph, Node
 from quantsmith.domain.layout import channel_axes
-from quantsmith.plan import QuantizationPlan, RescaleInput
+from quantsmith.plan import QuantizationPlan
 from quantsmith.result import (
     Err,
     FailureKind,
@@ -15,7 +16,6 @@ from quantsmith.result import (
     QuantSmithError,
     Result,
     failure,
-    validate,
 )
 
 
@@ -64,33 +64,11 @@ class SmoothQuant(BaseModel):
                 return error
             case Ok(weights):
                 pass
-        activation = np.maximum(
-            np.abs(observed.minimum), np.abs(observed.maximum)
-        ).astype(np.float64)
-        weight = np.maximum(np.abs(weights.minimum), np.abs(weights.maximum)).astype(
-            np.float64
-        )
-        if activation.shape != weight.shape:
-            return failure(
-                FailureKind.INVALID_DATA,
-                node.name,
-                "activation and weight channel dimensions differ",
-            )
-        active = (activation > 0) & (weight > 0)
-        scale = np.ones_like(activation)
-        scale[active] = activation[active] ** self.alpha / weight[active] ** (
-            1 - self.alpha
-        )
-        return validate(
-            node.name,
-            lambda: QuantizationPlan(
-                operations=(
-                    RescaleInput(
-                        node=node.name,
-                        scale=scale.astype(np.float32),
-                        activation_axis=activation_axis,
-                        weight_axis=axis,
-                    ),
-                )
-            ),
-        )
+        magnitude = np.maximum(np.abs(weights.minimum), np.abs(weights.maximum))
+        match rescaling(
+            node.name, activation_axis, axis, observed, magnitude, self.alpha
+        ):
+            case Err() as error:
+                return error
+            case Ok(operation):
+                return Ok(QuantizationPlan(operations=(operation,)))

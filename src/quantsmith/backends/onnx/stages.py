@@ -20,6 +20,7 @@ from quantsmith.pipeline.policies import (
     Folding,
     FoldOnly,
     FunctionOutputs,
+    JointFoldOnly,
     Outputs,
     ProducerOutputs,
     RuntimeScaling,
@@ -84,6 +85,7 @@ class TransformStage:
             context.samples,
             self.rules,
             histogram_bins=context.histogram_bins,
+            max_channel_histogram_bytes=context.max_channel_histogram_bytes,
         ):
             case Err() as error:
                 return error
@@ -103,20 +105,25 @@ class TransformStage:
             case FoldOnly():
                 from quantsmith.backends.onnx.folding import fold_only
 
-                match fold_only(value.revision.model, plan):
-                    case Err() as error:
-                        return error
-                    case Ok(payload):
-                        model, accepted, outcomes = payload
-                        revision = replace(
-                            value.revision,
-                            model=model,
-                            plans=value.revision.plans + (accepted,),
-                            folding=value.revision.folding + outcomes,
-                        )
-                        return Ok(replace(value, revision=revision))
+                folding = fold_only
+            case JointFoldOnly():
+                from quantsmith.backends.onnx.group_folding import fold_groups
+
+                folding = fold_groups
             case _:
                 assert_never(self.folding)
+        match folding(value.revision.model, plan):
+            case Err() as error:
+                return error
+            case Ok(payload):
+                model, accepted, outcomes = payload
+                revision = replace(
+                    value.revision,
+                    model=model,
+                    plans=value.revision.plans + (accepted,),
+                    folding=value.revision.folding + outcomes,
+                )
+                return Ok(replace(value, revision=revision))
 
 
 @dataclass(frozen=True)
@@ -147,6 +154,7 @@ class QuantizationStage:
             context.samples,
             configured,
             histogram_bins=context.histogram_bins,
+            max_channel_histogram_bytes=context.max_channel_histogram_bytes,
         ):
             case Err() as error:
                 return error
@@ -182,6 +190,23 @@ class QuantizationStage:
             value.revision, model=model, plans=value.revision.plans + (plan,)
         )
         return Ok(QuantizedGraph(revision, tuple(exclusions)))
+
+
+@dataclass(frozen=True)
+class ReuseQuantizersStage:
+    """Reuse identical private activation quantizers before compiling and auditing."""
+
+    def run(
+        self, value: QuantizedGraph, context: CalibrationContext
+    ) -> Result[QuantizedGraph, QuantSmithError]:
+        """Preserve numerical plans and leave verification to the following audit."""
+        from quantsmith.backends.onnx.quantizer_reuse import reuse_quantizers
+
+        match reuse_quantizers(value.revision.model):
+            case Err() as error:
+                return error
+            case Ok(model):
+                return Ok(replace(value, revision=replace(value.revision, model=model)))
 
 
 @dataclass(frozen=True)

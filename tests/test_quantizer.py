@@ -5,8 +5,14 @@ from collections.abc import Iterable, Mapping
 import pytest
 
 from quantsmith import Quantizer, Replay
+from quantsmith.algorithms.smoothquant.joint.ranges import ChannelMSE
 from quantsmith.calibration import Samples
-from quantsmith.config import PercentileConfig, QuantizationConfig, SmoothQuantConfig
+from quantsmith.config import (
+    JointSmoothQuantConfig,
+    PercentileConfig,
+    QuantizationConfig,
+    SmoothQuantConfig,
+)
 from quantsmith.domain import InputArray
 from tests.conftest import OperatorCase
 from tests.outcomes import expect_error, expect_ok
@@ -70,3 +76,15 @@ def test_invalid_model_does_not_read_samples(
 
     outcome = Quantizer.from_config(QuantizationConfig()).quantize(operator_case.model)
     expect_error(outcome.calibrate(Replay(unread)), "missing")
+
+
+def test_configured_channel_budget_is_applied(
+    operator_case: OperatorCase, samples: Samples
+) -> None:
+    """Carry the declared workspace limit through the facade and concrete ORT stage."""
+    config = QuantizationConfig(
+        smoothing=JointSmoothQuantConfig(channels=ChannelMSE()),
+        max_channel_histogram_bytes=1,
+    )
+    job = Quantizer.from_config(config).quantize(operator_case.model)
+    expect_error(job.calibrate(Replay(samples)), "budget")

@@ -13,7 +13,14 @@ from quantsmith.backends.onnx import admit, describe, lower, normalize
 from quantsmith.backends.onnx.pipeline import quantize
 from quantsmith.backends.onnx.stages import FinishTransform, TransformStage
 from quantsmith.calibration import Evaluator, Samples
-from quantsmith.config import QuantizationConfig, SmoothQuantConfig, supported
+from quantsmith.config import (
+    JointSmoothQuantConfig,
+    NoSmoothing,
+    QuantizationConfig,
+    SmoothQuantConfig,
+    joint_transform,
+    supported,
+)
 from quantsmith.domain import (
     Absent,
     Encoding,
@@ -296,8 +303,13 @@ def reconstruct(
     rules control exclusions. Replay must be deterministic and caller-bounded.
     Each returned plan applies to the preceding plan's lowered graph revision.
     """
-    if not isinstance(config.smoothing, SmoothQuantConfig):
-        return _reconstruct(model, samples, rules, config=config)
+    match config.smoothing:
+        case NoSmoothing():
+            return _reconstruct(model, samples, rules, config=config)
+        case SmoothQuantConfig(alpha=alpha, folding=folding):
+            transform = TransformStage(supported(SmoothQuant(alpha=alpha)), folding)
+        case JointSmoothQuantConfig(alpha=alpha, channels=channels):
+            transform = joint_transform(alpha, channels)
     match describe(model):
         case Err() as error:
             return error
@@ -317,13 +329,9 @@ def reconstruct(
     match quantize(
         model,
         samples,
-        Pipeline(
-            TransformStage(
-                supported(SmoothQuant(alpha=config.smoothing.alpha)),
-                config.smoothing.folding,
-            )
-        ).then(FinishTransform()),
+        Pipeline(transform).then(FinishTransform()),
         histogram_bins=config.histogram_bins,
+        max_channel_histogram_bytes=config.max_channel_histogram_bytes,
     ):
         case Err() as error:
             return error

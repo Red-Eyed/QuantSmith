@@ -4,6 +4,7 @@ from quantsmith.pipeline.contracts import CalibrationContext, Pipeline, Step
 from quantsmith.pipeline.policies import (
     FoldOnly,
     FunctionOutputs,
+    JointFoldOnly,
     ProducerOutputs,
     RuntimeScaling,
 )
@@ -22,6 +23,7 @@ __all__ = [
     "FoldOnly",
     "Folded",
     "FunctionOutputs",
+    "JointFoldOnly",
     "Pipeline",
     "ProducerOutputs",
     "QuantizationResult",

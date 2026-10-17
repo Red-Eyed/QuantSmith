@@ -4,6 +4,7 @@ from onnx import ModelProto
 
 from quantsmith.backends.onnx import admit, normalize
 from quantsmith.calibration import Samples
+from quantsmith.calibration.contracts import DEFAULT_CHANNEL_HISTOGRAM_BYTES
 from quantsmith.pipeline import (
     CalibrationContext,
     FloatGraph,
@@ -20,6 +21,7 @@ def quantize(
     program: Pipeline[FloatGraph, QuantizationResult],
     *,
     histogram_bins: int = 2048,
+    max_channel_histogram_bytes: int = DEFAULT_CHANNEL_HISTOGRAM_BYTES,
 ) -> Result[QuantizationResult, QuantSmithError]:
     """Admit an owned graph and interpret its explicit stage declaration."""
     match admit("ONNX validation", lambda: normalize(model)):
@@ -28,4 +30,9 @@ def quantize(
         case Ok(current):
             source = normalize(current)
             value = FloatGraph(Revision(source, current))
-            return program.run(value, CalibrationContext(samples, histogram_bins))
+            return program.run(
+                value,
+                CalibrationContext(
+                    samples, histogram_bins, max_channel_histogram_bytes
+                ),
+            )

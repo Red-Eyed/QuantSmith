@@ -11,6 +11,7 @@ Mermaid diagram, implementation limits, and primary references.
 | Percentile | A central histogram interval | [Percentile](../calibration/percentile/README.md) |
 | Static W8A8 | Fixed activation and weight grids | [Static W8A8](static/README.md) |
 | SmoothQuant | Equivalent channel rescaling | [SmoothQuant](smoothquant/README.md) |
+| Joint SmoothQuant | Shared-input scales from extrema or channel distributions | [Joint SmoothQuant](smoothquant/joint/README.md) |
 | GPTQv2 | Weight codes with upstream-error compensation | [GPTQv2](../reconstruction/gptqv2/README.md) |
 | QDrop-based reconstruction | Learned rounding and activation scale | [QDrop](../reconstruction/qdrop/README.md) |
 
