@@ -6,3 +6,4 @@ dist/
 *.egg-info/
 /work_dir/
 /issues/
+:memory:.ses
