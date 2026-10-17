@@ -38,13 +38,13 @@ class Config(BaseSettings, frozen=True):
     tasks: tuple[TaskKind, ...] = Field(
         default=(TaskKind.TRANSFORMER, TaskKind.WINDOWED, TaskKind.WINE), min_length=1
     )
-    output: Path = Field(default=Path("artifacts/training"))
+    output: Path = Field(default=Path("work_dir/artifacts/training"))
     methods: list[QuantizationMethod] = Field(
         default=list(QuantizationMethod),
         min_length=1,
         description="Choose minmax, percentile, smoothquant; commas select several.",
     )
-    cache: Path = Field(default=Path("artifacts/cache"))
+    cache: Path = Field(default=Path("work_dir/artifacts/cache"))
     seed: int = Field(default=42, ge=0)
     mlp_steps: int = Field(default=300, ge=1)
     rnn_steps: int = Field(default=600, ge=1)

@@ -15,7 +15,7 @@ class Config(BaseConfig):
 
     model_config = SettingsConfigDict(env_prefix="QUANTSMITH_CHARACTER_RNN_")
     tasks: CliSuppress[tuple[Literal[TaskKind.TEXT]]] = Field(default=(TaskKind.TEXT,))
-    output: Path = Field(default=Path("artifacts/character_rnn"))
+    output: Path = Field(default=Path("work_dir/artifacts/character_rnn"))
 
     mlp_steps: CliSuppress[int] = Field(default=300, ge=1)
     transformer_steps: CliSuppress[int] = Field(default=600, ge=1)

@@ -15,7 +15,7 @@ class Config(BaseConfig):
 
     model_config = SettingsConfigDict(env_prefix="QUANTSMITH_WINE_MLP_")
     tasks: CliSuppress[tuple[Literal[TaskKind.WINE]]] = Field(default=(TaskKind.WINE,))
-    output: Path = Field(default=Path("artifacts/wine_mlp"))
+    output: Path = Field(default=Path("work_dir/artifacts/wine_mlp"))
 
     rnn_steps: CliSuppress[int] = Field(default=600, ge=1)
     transformer_steps: CliSuppress[int] = Field(default=600, ge=1)

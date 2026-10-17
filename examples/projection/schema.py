@@ -16,7 +16,7 @@ class Config(BaseSettings, frozen=True):
     model_config = SettingsConfigDict(
         cli_kebab_case=True, env_prefix="QUANTSMITH_PROJECTION_", populate_by_name=True
     )
-    output: Path = Field(default=Path("artifacts/projection"))
+    output: Path = Field(default=Path("work_dir/artifacts/projection"))
     methods: list[QuantizationMethod] = Field(
         default=list(QuantizationMethod),
         min_length=1,

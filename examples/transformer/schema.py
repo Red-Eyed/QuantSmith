@@ -17,7 +17,7 @@ class Config(BaseConfig):
     tasks: CliSuppress[tuple[Literal[TaskKind.TRANSFORMER]]] = Field(
         default=(TaskKind.TRANSFORMER,)
     )
-    output: Path = Field(default=Path("artifacts/transformer"))
+    output: Path = Field(default=Path("work_dir/artifacts/transformer"))
 
     mlp_steps: CliSuppress[int] = Field(default=300, ge=1)
     rnn_steps: CliSuppress[int] = Field(default=600, ge=1)

@@ -38,8 +38,11 @@ Examples are human-readable source walkthroughs; running them is optional.
 Keep run commands and options in each example’s own README, not in shared
 documentation or just recipes.
 
-Examples write graphs, JSON plans, and reports under `artifacts/` by default.
-Keep generated artifacts and downloaded data out of commits.
+Examples write graphs, JSON plans, and reports under `work_dir/artifacts/` by default.
+Keep generated artifacts and downloaded data out of commits. Pytest temporary
+files and per-test working directories live under `work_dir/tests/`; wheel builds
+use `work_dir/dist/`. Keep runtime files in `work_dir/`, which is ignored by Git.
+Tool caches may remain in their conventional ignored locations at the root.
 
 ## Architecture and contracts
 

@@ -12,4 +12,4 @@ test-algorithms *args:
     uv run --locked pytest --confcutdir=tests/algorithms tests/algorithms -q {{args}}
 
 wheel:
-    uv build --wheel
+    uv build --wheel --out-dir work_dir/dist

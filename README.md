@@ -106,8 +106,8 @@ per layer, compose [rules](src/quantsmith/rules/README.md) with `StaticW8A8`,
 | ONNX graph validation and QDQ lowering | [ONNX backend](src/quantsmith/backends/onnx/README.md) |
 
 Plans expose the chosen encodings and exclusions; examples save graphs, plans,
-reports, and held-out predictions or output errors under `artifacts/`. QuantSmith
-streams calibration samples and retains bounded statistics rather than caching
+reports, and held-out predictions or output errors under `work_dir/artifacts/`.
+QuantSmith streams calibration samples and retains bounded statistics rather than caching
 the full dataset. Its planning algorithms can also be tested from supplied
 statistics without executing ONNX.
 

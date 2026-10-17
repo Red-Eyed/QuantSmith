@@ -17,4 +17,4 @@ class Config(BaseConfig):
     models: CliSuppress[tuple[Literal[ModelName.EFFICIENTNET_B0]]] = Field(
         default=(ModelName.EFFICIENTNET_B0,)
     )
-    output: Path = Field(default=Path("artifacts/efficientnet_b0"))
+    output: Path = Field(default=Path("work_dir/artifacts/efficientnet_b0"))

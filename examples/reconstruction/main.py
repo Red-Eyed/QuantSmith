@@ -40,7 +40,7 @@ class Config(BaseSettings, frozen=True):
     """Expose calibration, optimization, and held-out evaluation budgets."""
 
     model_config = SettingsConfigDict(cli_kebab_case=True, populate_by_name=True)
-    output: Path = Path("artifacts/reconstruction")
+    output: Path = Path("work_dir/artifacts/reconstruction")
     calibration_batches: int = Field(default=8, ge=1)
     evaluation_batches: int = Field(default=8, ge=1)
     calibration_seed: int = Field(default=11, ge=0)

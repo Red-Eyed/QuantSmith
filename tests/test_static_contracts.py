@@ -208,6 +208,8 @@ def test_contract(tmp_path: Path, source: str, expected: str, line: int) -> None
         [
             "uv",
             "run",
+            "--project",
+            str(root),
             "--locked",
             "pyrefly",
             "check",
@@ -217,7 +219,7 @@ def test_contract(tmp_path: Path, source: str, expected: str, line: int) -> None
             "json",
             str(candidate),
         ],
-        cwd=root,
+        cwd=tmp_path,
         text=True,
         capture_output=True,
         check=False,

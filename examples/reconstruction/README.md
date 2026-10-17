@@ -13,7 +13,7 @@ GPTQv2, and operator-level QDrop on the same deterministic FP32 projection.
 Every recipe starts from the original graph; calibration and evaluation use
 different seeds. The output directory is created automatically.
 
-`artifacts/reconstruction/report.json` records settings, version, calibration
+`work_dir/artifacts/reconstruction/report.json` records settings, version, calibration
 time, and held-out MSE/maximum error. Each method saves an ONNX graph and a full
 plan, including reconstructed integer codes. `--help` exposes budgets and seeds.
 

@@ -4,4 +4,4 @@ __pycache__/
 .ruff_cache/
 dist/
 *.egg-info/
-artifacts/
+/work_dir/

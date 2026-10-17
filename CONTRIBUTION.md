@@ -39,8 +39,17 @@ just wheel                        # Build a local wheel
 ```
 
 For a focused change, run the relevant tests first; run `just check` before
-submitting. Keep generated graphs, reports, downloaded data, and other
-`artifacts/` output out of commits. Only the project owner publishes packages.
+submitting. Generated files belong in the ignored `work_dir/`: examples and
+downloads use `work_dir/artifacts/`, pytest temporary files and per-test working
+directories use `work_dir/tests/`, and `just wheel` writes to `work_dir/dist/`.
+These directories are created automatically. Pytest resets its temporary directory
+on each run; do not keep reports or datasets there. Tool caches remain in their
+standard ignored locations at the repository root. Only the project owner
+publishes packages.
+
+Examples and tests default `ORT_DISABLE_TELEMETRY` to `1` before importing ONNX
+Runtime, preventing its import-time telemetry session files. An explicit
+environment setting takes precedence; the library does not change this setting.
 
 ## Make results reviewable
 

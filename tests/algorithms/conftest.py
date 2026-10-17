@@ -1,8 +1,16 @@
 """NumPy-only fixtures; no ONNX models, runtime sessions, or downloaded data."""
 
+from pathlib import Path
+
 import pytest
 
 from tests.algorithms.cases import OperatorLayout
+
+
+@pytest.fixture(autouse=True)
+def isolated_working_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep isolated algorithm runs inside pytest's private working directories."""
+    monkeypatch.chdir(tmp_path)
 
 
 @pytest.fixture(

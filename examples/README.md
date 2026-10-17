@@ -63,7 +63,7 @@ every calibration pass.
 
 ## Outputs and interpretation
 
-Each example writes `artifacts/<example>/index.html`, `results.json`, and
+Each example writes `work_dir/artifacts/<example>/index.html`, `results.json`, and
 `summary.md`, plus its FP32/quantized ONNX graphs and stage plans. Reports show
 actual held-out predictions or output errors, not just a successful export.
 The trained language models are small educational models, not pretrained LLMs.

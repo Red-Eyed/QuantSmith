@@ -17,4 +17,4 @@ class Config(BaseConfig):
     models: CliSuppress[tuple[Literal[ModelName.MOBILENET_V2]]] = Field(
         default=(ModelName.MOBILENET_V2,)
     )
-    output: Path = Field(default=Path("artifacts/mobilenet_v2"))
+    output: Path = Field(default=Path("work_dir/artifacts/mobilenet_v2"))

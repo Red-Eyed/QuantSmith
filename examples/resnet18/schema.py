@@ -17,4 +17,4 @@ class Config(BaseConfig):
     models: CliSuppress[tuple[Literal[ModelName.RESNET18]]] = Field(
         default=(ModelName.RESNET18,)
     )
-    output: Path = Field(default=Path("artifacts/resnet18"))
+    output: Path = Field(default=Path("work_dir/artifacts/resnet18"))

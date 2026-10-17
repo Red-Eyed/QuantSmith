@@ -1,6 +1,7 @@
 """Reusable ONNX operator fixtures with explicit layout variants."""
 
 from collections.abc import Iterable, Mapping
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -9,6 +10,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from quantsmith.calibration import Samples
 from quantsmith.domain import FloatArray
+
+
+@pytest.fixture(autouse=True)
+def isolated_working_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Contain incidental runtime files in each test's private working directory."""
+    monkeypatch.chdir(tmp_path)
 
 
 class OperatorCase(BaseModel):

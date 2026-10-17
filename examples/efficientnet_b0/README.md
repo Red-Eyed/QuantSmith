@@ -64,7 +64,7 @@ uv run --locked --group examples -m examples.efficientnet_b0.main --help
 ```
 
 Omitting `--methods` runs all three columns. Reports go to
-`artifacts/efficientnet_b0/index.html`, `results.json`, and `summary.md`. The directory
+`work_dir/artifacts/efficientnet_b0/index.html`, `results.json`, and `summary.md`. The directory
 also contains FP32/INT8 ONNX graphs and full per-stage `.plan.json` decisions.
 `--output` chooses another directory; `--quiet` disables progress and `--json`
 prints the report as JSON. Downloads and output setup are automatic.

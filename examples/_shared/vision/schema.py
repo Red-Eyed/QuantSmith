@@ -35,13 +35,13 @@ class DemoConfig(BaseSettings, frozen=True):
         populate_by_name=True,
     )
     models: tuple[ModelName, ...] = Field(default=tuple(ModelName), min_length=1)
-    output: Path = Field(default=Path("artifacts/vision"))
+    output: Path = Field(default=Path("work_dir/artifacts/vision"))
     methods: list[QuantizationMethod] = Field(
         default=list(QuantizationMethod),
         min_length=1,
         description="Choose minmax, percentile, smoothquant; commas select several.",
     )
-    cache: Path = Field(default=Path("artifacts/cache"))
+    cache: Path = Field(default=Path("work_dir/artifacts/cache"))
     calibration_samples: int = Field(default=128, ge=1)
     evaluation_samples: int = Field(default=256, ge=1)
     seed: int = Field(default=42, ge=0)
