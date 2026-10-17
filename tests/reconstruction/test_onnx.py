@@ -274,3 +274,20 @@ def test_grouped_convolution_export(
     expected = array(output) + graph.weights["bias"].reshape(1, -1, 1, 1)
     actual = expect_ok(OnnxEvaluator(result.model).run(sample, ("y",)))["y"]
     np.testing.assert_allclose(actual, expected, rtol=1e-5, atol=2e-6)
+
+
+def test_output_selected_static_objective_is_rejected(
+    operator_case: OperatorCase, samples: Samples
+) -> None:
+    """Reject static candidate scoring at the weight-reconstruction boundary."""
+    from quantsmith.config import OutputSelectedSmoothingConfig
+    from tests.outcomes import expect_error
+
+    config = QuantizationConfig(
+        smoothing=OutputSelectedSmoothingConfig(candidates=(JointSmoothQuantConfig(),))
+    )
+    rules: Rules[Reconstructor] = Rules(default=GPTQv2())
+    expect_error(
+        reconstruct(operator_case.model, samples, rules, config=config),
+        "separate candidate objective",
+    )

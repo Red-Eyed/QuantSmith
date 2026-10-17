@@ -433,3 +433,35 @@ def test_joint_model_regions(
         assert isinstance(result.execution, ExecutionReport)
         assert result.execution.integer_nodes
     assert not any(node.op_type == "QLinearMul" for node in result.model.graph.node)
+
+
+def test_output_selected_smoothing_real_exports(export_case: ExportCase) -> None:
+    """Score real exported CNNs and Stackformers with unchanged public outputs."""
+    from quantsmith.config import OutputSelectedSmoothingConfig
+
+    config = QuantizationConfig(
+        smoothing=OutputSelectedSmoothingConfig(
+            candidates=(JointSmoothQuantConfig(alpha=0.5),)
+        ),
+        histogram_bins=64,
+    )
+    inputs = {export_case.input_name: export_case.inputs}
+    before = export_case.graph.SerializeToString()
+    result = expect_ok(
+        Quantizer.from_config(config).quantize(export_case.graph).calibrate((inputs,))
+    )
+    assert export_case.graph.SerializeToString() == before
+    assert not isinstance(result.selection, Absent)
+    report = result.selection
+    assert len(report.candidates) == 2
+    assert report.outputs == (export_case.output_name,)
+    assert min(row.mean_squared_error for row in report.candidates) == next(
+        row.mean_squared_error
+        for row in report.candidates
+        if row.candidate == report.selected
+    )
+    assert not isinstance(result.execution, Absent)
+    assert all(
+        row.integer_nodes == len(result.execution.integer_nodes)
+        for row in report.candidates
+    )

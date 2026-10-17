@@ -16,6 +16,7 @@ from quantsmith.calibration import Evaluator, Samples
 from quantsmith.config import (
     JointSmoothQuantConfig,
     NoSmoothing,
+    OutputSelectedSmoothingConfig,
     QuantizationConfig,
     SmoothQuantConfig,
     joint_transform,
@@ -310,6 +311,13 @@ def reconstruct(
             transform = TransformStage(supported(SmoothQuant(alpha=alpha)), folding)
         case JointSmoothQuantConfig(alpha=alpha, channels=channels):
             transform = joint_transform(alpha, channels)
+        case OutputSelectedSmoothingConfig():
+            return failure(
+                FailureKind.UNSUPPORTED,
+                "reconstruction",
+                "output-selected smoothing scores static integer graphs; "
+                "reconstruction requires a separate candidate objective",
+            )
     match describe(model):
         case Err() as error:
             return error

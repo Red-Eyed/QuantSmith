@@ -1,5 +1,14 @@
 # Windowed causal Transformer development log
 
+## 2026-10-17 — Executed-output smoothing selection
+
+Windowed-transformer MinMax output MSE selects joint-extrema alpha-0.5 smoothing.
+Held-out top-1 drops 41.02% to 40.77% while perplexity improves 7.9579 to 7.9406.
+Percentile retains the unsmoothed baseline (41.02%, 7.9478). Both candidates retain
+15 integer projections. This conflicting task evidence prevents an unqualified
+quality claim; accepted recipes remain unchanged. See
+[the complete study](../../docs/output-based-smoothing.md).
+
 ## 2026-10-17 — Per-channel histogram range selection
 
 Add dedicated typed channel requirements/distributions, streamed replay, owned

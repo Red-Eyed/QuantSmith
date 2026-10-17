@@ -1,5 +1,14 @@
 # Model experiment log
 
+## 2026-10-17 — Output-based candidate selection
+
+The optional selector evaluates complete lowered graphs against FP32 model-output
+MSE through paired streaming ORT replay. Both Stackformers checkpoints retain 15
+integer projections. The global model retains baseline for both static methods;
+windowed MinMax chooses smoothing, improving perplexity but reducing top-1.
+Windowed Percentile retains baseline. No training checkpoint, accepted example
+configuration or default changes. See [design and measurements](../../../docs/output-based-smoothing.md).
+
 ## 2026-10-17 — Per-channel histogram range selection
 
 Add dedicated typed channel requirements/distributions, streamed replay, owned

@@ -1,5 +1,28 @@
 # QuantSmith development log
 
+## 2026-10-17 — Executed-output smoothing selection and explicit boundaries
+
+Make inserted-boundary calibration declarative (commit `cf19cea`), retaining
+legacy MinMax by default and supporting main-policy inheritance or explicit
+Percentile. Add an opt-in whole-graph smoothing selector with an unsmoothed
+baseline, fresh calibration, complete integer audit, optimized paired replay,
+and immutable per-candidate reports. Model outputs are the default objective;
+intermediate observations protect coordinates and share calibration eligibility.
+
+`just check` passes 841 tests, Ruff checks/formatting and strict Pyrefly. Direct
+ORT 1.30.0 probes (`8ab3ba8`) verify output-channel weight scales and scalar activation scales
+for QLinearConv/QLinearMatMul, including runtime integer weights. The latter are
+an explicit limitation of our static quantizer, not a kernel impossibility.
+
+The five-model, 45-variant study is negative evidence for automatic adoption:
+six of ten comparisons select smoothing; held-out top-1 improves once and falls
+five times. Windowed-transformer MinMax improves perplexity while lowering top-1.
+Defaults and accepted recipes remain unchanged. Complete task, ROM, process RSS,
+latency and raw trace provenance are recorded in
+[the design and study](docs/output-based-smoothing.md); the capability matrix is
+[in the ORT evidence document](docs/ort-capabilities.md). Local issue records live
+under ignored `issues/`.
+
 ## 2026-10-17 — Per-channel histogram range selection
 
 Add dedicated typed channel requirements/distributions, streamed replay, owned

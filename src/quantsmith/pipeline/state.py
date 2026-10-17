@@ -10,6 +10,7 @@ from quantsmith.backends.onnx.integer_execution.audit import (
     UnverifiedNode,
 )
 from quantsmith.domain import Absent
+from quantsmith.optimization.smoothing import SelectionReport
 from quantsmith.plan import QuantizationPlan
 
 
@@ -55,6 +56,9 @@ class QuantizedGraph:
 
     revision: Revision
     exclusions: tuple[UnverifiedNode, ...]
+    selection: SelectionReport | Absent = Absent(
+        reason="candidate selection was not requested"
+    )
 
 
 class QuantizationResult(BaseModel):
@@ -67,3 +71,6 @@ class QuantizationResult(BaseModel):
     plans: tuple[QuantizationPlan, ...] = Field()
     execution: ExecutionReport | Absent = Field()
     folding: tuple[FoldingOutcome, ...] = Field(default=())
+    selection: SelectionReport | Absent = Field(
+        default_factory=lambda: Absent(reason="candidate selection was not requested")
+    )

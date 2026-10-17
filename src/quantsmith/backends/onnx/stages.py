@@ -238,6 +238,7 @@ class VerifyStage:
                         plans=revision.plans,
                         execution=execution,
                         folding=revision.folding,
+                        selection=value.selection,
                     )
                 )
 

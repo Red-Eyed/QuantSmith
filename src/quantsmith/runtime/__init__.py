@@ -34,18 +34,25 @@ _OUTPUT_ARRAYS = TypeAdapter(
     list[NDArray[np.generic]],
     config=ConfigDict(strict=True, arbitrary_types_allowed=True),
 )
+_NO_OPTIMIZATION = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
 
 
 class OnnxEvaluator:
     """Cache one instrumented CPU session, exposing only requested tensors."""
 
-    def __init__(self, model: ModelProto) -> None:
+    def __init__(
+        self,
+        model: ModelProto,
+        *,
+        optimization: ort.GraphOptimizationLevel = _NO_OPTIMIZATION,
+    ) -> None:
         """Own a validated graph; session construction is deferred to execution."""
         self.model = normalize(model)
+        self.optimization = optimization
         self.sessions: dict[tuple[str, ...], ort.InferenceSession] = {}
 
     def _session(self, outputs: tuple[str, ...]) -> ort.InferenceSession:
-        """Build an instrumented graph with optimization disabled for observability."""
+        """Expose requested tensors and apply the declared optimization level."""
         if outputs in self.sessions:
             return self.sessions[outputs]
         model = deepcopy(self.model)
@@ -66,7 +73,7 @@ class OnnxEvaluator:
                 raise ValueError(f"requested tensor lacks FP32 metadata: {name}")
             model.graph.output.append(metadata[name])
         options = ort.SessionOptions()
-        options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
+        options.graph_optimization_level = self.optimization
         options.intra_op_num_threads = 1
         session = ort.InferenceSession(
             model.SerializeToString(), options, providers=["CPUExecutionProvider"]

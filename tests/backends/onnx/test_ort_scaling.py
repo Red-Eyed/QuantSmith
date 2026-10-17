@@ -583,3 +583,63 @@ def test_percentile_residual_boundaries_execute(
         )
     )
     assert deployed.model.SerializeToString() == explicit.model.SerializeToString()
+
+
+def test_contraction_observations_exclude_residual_boundaries(
+    residual_model: ModelProto,
+) -> None:
+    """Observe contraction outputs without silently adding residual objective terms."""
+    from quantsmith import Quantizer, Replay
+    from quantsmith.config import (
+        JointSmoothQuantConfig,
+        OutputSelectedSmoothingConfig,
+        QuantizationConfig,
+    )
+    from quantsmith.domain import Absent
+    from quantsmith.optimization.smoothing import ContractionOutputs
+
+    config = QuantizationConfig(
+        smoothing=OutputSelectedSmoothingConfig(
+            candidates=(JointSmoothQuantConfig(),), observations=ContractionOutputs()
+        )
+    )
+    result = expect_ok(
+        Quantizer.from_config(config)
+        .quantize(residual_model)
+        .calibrate(Replay(replay_inputs))
+    )
+    assert not isinstance(result.selection, Absent)
+    assert result.selection.outputs == ("a", "c", "y")
+    assert all(row.integer_nodes == 4 for row in result.selection.candidates)
+
+
+def test_internal_observations_share_function_calibration_contract(
+    residual_model: ModelProto,
+) -> None:
+    """Rebuild baseline with the same exposed cuts as its smoothing alternatives."""
+    from quantsmith import Quantizer, Replay
+    from quantsmith.config import (
+        JointSmoothQuantConfig,
+        OutputSelectedSmoothingConfig,
+        QuantizationConfig,
+    )
+    from quantsmith.domain import Absent
+    from quantsmith.optimization.smoothing import ContractionOutputs
+    from quantsmith.pipeline import FunctionOutputs
+
+    config = QuantizationConfig(
+        outputs=FunctionOutputs(),
+        smoothing=OutputSelectedSmoothingConfig(
+            candidates=(JointSmoothQuantConfig(),), observations=ContractionOutputs()
+        ),
+    )
+    result = expect_ok(
+        Quantizer.from_config(config)
+        .quantize(residual_model)
+        .calibrate(Replay(replay_inputs))
+    )
+    assert not isinstance(result.selection, Absent)
+    baseline, candidate = result.selection.candidates
+    assert not candidate.folded_nodes
+    assert baseline.mean_squared_error == candidate.mean_squared_error
+    assert result.selection.selected == "baseline"

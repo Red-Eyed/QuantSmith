@@ -171,3 +171,47 @@ def test_pipeline_recalibrates(
     assert not any(
         node.op_type in {"Div", "QLinearMul"} for node in result.model.graph.node
     )
+
+
+@pytest.mark.parametrize("observe_internal", [False, True])
+def test_output_selection_protects_coordinates(
+    grouped_graph: ModelProto,
+    group_samples: tuple[Mapping[str, FloatArray], ...],
+    observe_internal: bool,
+) -> None:
+    """Protect intermediate scoring cuts without changing the deployed interface."""
+    from quantsmith.config import OutputSelectedSmoothingConfig
+    from quantsmith.domain import Absent
+    from quantsmith.optimization.smoothing import ModelOutputs, ObservedTensors
+
+    observations = ObservedTensors(names=("a",)) if observe_internal else ModelOutputs()
+    config = QuantizationConfig(
+        smoothing=OutputSelectedSmoothingConfig(
+            candidates=(JointSmoothQuantConfig(alpha=0.5),), observations=observations
+        )
+    )
+    before = grouped_graph.SerializeToString()
+    result = expect_ok(
+        Quantizer.from_config(config).quantize(grouped_graph).calibrate(group_samples)
+    )
+    assert grouped_graph.SerializeToString() == before
+    assert tuple(output.name for output in result.model.graph.output) == tuple(
+        output.name for output in grouped_graph.graph.output
+    )
+    assert not isinstance(result.selection, Absent)
+    report = result.selection
+    assert report.outputs == (
+        ("a",)
+        if observe_internal
+        else tuple(output.name for output in grouped_graph.graph.output)
+    )
+    assert report.candidates[0].candidate == "baseline"
+    if observe_internal:
+        assert not report.candidates[1].folded_nodes
+    elif grouped_graph.graph.name in {"Mul", "MatMul", "Gemm", "Relu"}:
+        assert set(report.candidates[1].folded_nodes) == {"q", "k"}
+    assert min(score.mean_squared_error for score in report.candidates) == next(
+        score.mean_squared_error
+        for score in report.candidates
+        if score.candidate == report.selected
+    )

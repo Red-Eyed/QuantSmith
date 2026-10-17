@@ -1,5 +1,13 @@
 # Reconstruction experiments
 
+## 2026-10-17 — Keep static selection out of reconstruction
+
+The new executed-output smoothing mode scores static integer graphs. Reconstruction
+changes learned weight codes and currently makes no integer-audit claim. Its
+entry point therefore rejects this configuration explicitly instead of silently
+using an objective for a different computation. Six layout tests cover the
+restriction; existing independent and joint smoothing paths remain available.
+
 ## 2026-09-28 — W8A8 projection comparison
 
 Motivation: determine whether newer reconstruction methods improve on existing

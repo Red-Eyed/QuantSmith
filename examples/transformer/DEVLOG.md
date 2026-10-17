@@ -1,5 +1,14 @@
 # Global causal Transformer development log
 
+## 2026-10-17 — Executed-output smoothing selection
+
+Global-transformer output MSE prefers the unsmoothed baseline for MinMax and
+Percentile against joint-extrema alpha-0.5 smoothing. Held-out results therefore
+remain baseline: MinMax top-1 40.94%, perplexity 7.9762; Percentile top-1 40.60%,
+perplexity 7.9658. Both alternatives retain 15 audited integer projections.
+This does not establish faster-than-FP32 inference. Accepted recipes remain
+unchanged; see [the complete study](../../docs/output-based-smoothing.md).
+
 ## 2026-10-17 — Per-channel histogram range selection
 
 Add dedicated typed channel requirements/distributions, streamed replay, owned

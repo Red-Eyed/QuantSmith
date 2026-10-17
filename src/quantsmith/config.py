@@ -21,6 +21,7 @@ from quantsmith.backends.onnx.stages import (
 from quantsmith.calibration import MinMax, Percentile
 from quantsmith.calibration.contracts import DEFAULT_CHANNEL_HISTOGRAM_BYTES
 from quantsmith.domain import IntegerType
+from quantsmith.optimization.smoothing import ModelOutputs, Observations
 from quantsmith.pipeline import FloatGraph, JointFoldOnly, Pipeline, QuantizationResult
 from quantsmith.pipeline.policies import Folding, FoldOnly, Outputs, ProducerOutputs
 from quantsmith.rules import ByOperator, Exclude, Rule, Rules
@@ -75,6 +76,17 @@ class JointSmoothQuantConfig(BaseModel):
     )
 
 
+class OutputSelectedSmoothingConfig(BaseModel):
+    """Score declared joint-smoothing graphs against an unsmoothed baseline."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    kind: Literal["output_selected"] = Field(default="output_selected")
+    candidates: tuple[JointSmoothQuantConfig, ...] = Field(min_length=1)
+    observations: Observations = Field(
+        default_factory=ModelOutputs, discriminator="kind"
+    )
+
+
 class QuantizationConfig(BaseModel):
     """Validate built-in choices; extensions compose typed pipeline steps directly."""
 
@@ -86,9 +98,12 @@ class QuantizationConfig(BaseModel):
     calibration: MinMaxConfig | PercentileConfig = Field(
         default_factory=MinMaxConfig, discriminator="kind"
     )
-    smoothing: NoSmoothing | SmoothQuantConfig | JointSmoothQuantConfig = Field(
-        default_factory=NoSmoothing, discriminator="kind"
-    )
+    smoothing: (
+        NoSmoothing
+        | SmoothQuantConfig
+        | JointSmoothQuantConfig
+        | OutputSelectedSmoothingConfig
+    ) = Field(default_factory=NoSmoothing, discriminator="kind")
     outputs: Outputs = Field(default_factory=ProducerOutputs, discriminator="kind")
     boundary_calibration: FollowCalibration | MinMaxConfig | PercentileConfig = Field(
         default_factory=MinMaxConfig, discriminator="kind"
@@ -142,6 +157,20 @@ class QuantizationConfig(BaseModel):
                     .then(ReuseQuantizersStage())
                     .then(VerifyStage())
                 )
+            case OutputSelectedSmoothingConfig(
+                candidates=candidates, observations=observations
+            ):
+                from quantsmith.backends.onnx.smoothing_selection import (
+                    selection_stage,
+                )
+
+                transforms = tuple(
+                    joint_transform(candidate.alpha, candidate.channels)
+                    for candidate in candidates
+                )
+                return Pipeline(
+                    selection_stage(quantization, transforms, observations)
+                ).then(VerifyStage())
             case _:
                 assert_never(self.smoothing)
 

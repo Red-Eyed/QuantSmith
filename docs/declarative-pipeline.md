@@ -18,6 +18,14 @@ also changed accuracy; it remains archived on
 The project targets ONNX Runtime. ONNX is its serialized graph format. No backend
 selection protocol or backend type parameter is needed.
 
+`OutputSelectedSmoothingConfig` adds an opt-in `FloatGraph -> QuantizedGraph`
+selection step before the final audit. It compares declared complete-graph
+candidates and returns a typed `selection` report. Existing declarations still
+skip candidate construction entirely. Boundary calibration is separately explicit
+through `FollowCalibration`, `MinMaxConfig` or `PercentileConfig`. See
+[the selection design](output-based-smoothing.md) and
+[verified ORT capabilities](ort-capabilities.md).
+
 ## Lifecycle and interfaces
 
 ```mermaid

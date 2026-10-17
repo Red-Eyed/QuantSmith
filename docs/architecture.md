@@ -38,6 +38,11 @@ flowchart TD
   Explicit exclusions remain authoritative.
 - `algorithms/` declares requirements and computes plans from supplied statistics.
   Algorithms have no ONNX, ORT, filesystem or dataset dependencies.
+- `optimization/smoothing/` defines pure output-error selection and immutable
+  reports. The optional ORT selection stage constructs and audits whole-graph
+  candidates, then streams paired output replay. See
+  [output-based smoothing](output-based-smoothing.md) for coordinate protection,
+  the numerical objective and experimental restrictions.
 - `calibration/` streams samples and maintains aggregate ranges/histograms.
   Histogram replay must reproduce the same inputs. No activation dataset is kept.
 - `plan/` describes consumer input quantization, producer output quantization,
@@ -46,8 +51,9 @@ flowchart TD
 - `backends/onnx/` admits graphs, lowers plans on owned copies and runs the staged
   shell. `integer_execution/` adapts built-in static methods to the CPU execution
   contract. `ort_scaling/` plans specialized smoothing rewrites.
-- `runtime/` instruments graph values with optimizations disabled for calibration.
-  Deployment measurements use optimized sessions instead.
+- `runtime/` instruments graph values with optimizations disabled for calibration
+  by default. Output-based selection explicitly uses optimized sessions;
+  deployment measurements remain independent of diagnostic instrumentation.
 - `examples/` owns pretrained model loading, preprocessing, data selection, task
   metrics and artifact presentation. Generated data and graphs stay in `work_dir/`.
 

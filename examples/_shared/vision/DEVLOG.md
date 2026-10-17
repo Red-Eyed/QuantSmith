@@ -1,5 +1,17 @@
 # Pretrained model experiment log
 
+## 2026-10-17 — Executed-output smoothing candidate comparison
+
+Compare unsmoothed and joint-extrema alpha-0.5 graphs for MinMax and Percentile,
+with exact quantizer reuse on both sides. The selector uses optimized model-output
+MSE, not independent channel histogram error. Calibration uses the same 128 train
+images; quality uses 256 held-out images. ResNet18 MinMax improves top-1 from
+66.41% to 66.80%, but its Percentile choice drops 67.19% to 66.80%; MobileNetV2
+choices lose 0.39 percentage points each. EfficientNetB0 MinMax drops 28.52% to
+26.17%; Percentile retains baseline and avoids the joint regression. These are
+experimental observations, not an adopted recipe. Runtime ROM/RSS/latency and raw
+ORT traces are recorded in [the full study](../../../docs/output-based-smoothing.md).
+
 ## 2026-10-17 — Per-channel histogram range selection
 
 Add dedicated typed channel requirements/distributions, streamed replay, owned
