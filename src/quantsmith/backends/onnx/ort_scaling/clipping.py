@@ -1,5 +1,6 @@
-"""Absorb channel smoothing into Conv output encodings and integer ReLU6 bounds."""
+"""Pure recognition, validation, and planning of scaled integer clipping."""
 
+from copy import deepcopy
 from dataclasses import dataclass
 
 import numpy as np
@@ -7,154 +8,245 @@ from numpy.typing import NDArray
 from onnx import NodeProto, TensorProto, helper, numpy_helper
 
 from quantsmith.backends.onnx.ort_scaling.graph import (
-    GraphEditor,
+    GraphIndex,
+    NodeReplacement,
+    RewritePatch,
+    ScalarEncoding,
     ScalingBoundary,
-    standard,
+    fresh_names,
+    producer_chain,
 )
 from quantsmith.domain import Absent, FloatArray
 
 
 @dataclass(frozen=True)
-class ClipRewrite:
-    """Hold a fully checked rewrite before any graph parameters are modified."""
+class ClipMatch:
+    """Name each node in a recognized exclusive Conv/Clip/Q/DQ scaling path."""
 
     boundary: ScalingBoundary
     convolution: NodeProto
     clip: NodeProto
     source_quantizer: NodeProto
     weight_dequantizer: NodeProto
-    weight_scale: FloatArray
-    bound: NDArray[np.uint8]
+
+
+@dataclass(frozen=True)
+class WeightParameters:
+    """Bind channel layout and optional bias to validated per-channel weights."""
+
+    shape: tuple[int, ...]
+    scale: FloatArray
     bias: FloatArray | Absent
 
 
-def _chain(
-    editor: GraphEditor, boundary: ScalingBoundary
-) -> tuple[NodeProto, NodeProto, NodeProto, NodeProto] | None:
-    """Require exclusive Conv/Clip/Q/DQ edges and matching source QDQ encodings."""
-    dq = boundary.dequantizer
-    q = editor.producers.get(dq.input[0])
-    if q is None or not standard(q, "QuantizeLinear"):
-        return None
-    encoding = editor.scalar_encoding(q)
-    restored = editor.scalar_encoding(dq)
-    if encoding is None or restored is None:
-        return None
-    if not all(
-        np.array_equal(left, right)
-        for left, right in zip(encoding, restored, strict=True)
-    ):
-        return None
-    clip = editor.producers.get(q.input[0])
-    if clip is None or not standard(clip, "Clip") or len(clip.input) != 3:
-        return None
-    conv = editor.producers.get(clip.input[0])
-    if conv is None or not standard(conv, "Conv"):
-        return None
-    wdq = editor.producers.get(conv.input[1])
-    if wdq is None or not standard(wdq, "DequantizeLinear") or len(wdq.input) != 3:
-        return None
-    if any(not editor.exclusive(node) for node in (conv, clip, q, dq, wdq)):
-        return None
-    return conv, clip, q, wdq
+@dataclass(frozen=True)
+class ClipLimits:
+    """Bind positive scalar clipping bound and zero-based UINT8 output encoding."""
+
+    upper: FloatArray
+    scale: FloatArray
 
 
-def _rewrite(editor: GraphEditor, boundary: ScalingBoundary) -> ClipRewrite | None:
-    """Calculate a safe positive channel rewrite with a zero-based UINT8 output."""
-    chain = _chain(editor, boundary)
-    if chain is None:
-        return None
-    conv, clip, q, wdq = chain
-    divisor = editor.float_constant(boundary.division.input[1])
-    weight_scale = editor.float_constant(wdq.input[1])
-    weight = editor.constants.get(wdq.input[0])
-    low = editor.float_constant(clip.input[1])
-    high = editor.float_constant(clip.input[2])
-    encoding = editor.scalar_encoding(boundary.quantizer)
-    axis = next((attr.i for attr in wdq.attribute if attr.name == "axis"), 1)
-    if divisor is None or weight_scale is None or weight is None or encoding is None:
-        return None
-    if (
-        weight.data_type not in (TensorProto.INT8, TensorProto.UINT8)
-        or len(weight.dims) < 3
-        or axis not in (0, -len(weight.dims))
+@dataclass(frozen=True)
+class ScaledParameters:
+    """Hold calculated constants before any graph patch is constructed."""
+
+    weight_scale: FloatArray
+    bias: FloatArray | Absent
+    bound: NDArray[np.uint8]
+
+
+def match_clipping(index: GraphIndex, boundary: ScalingBoundary) -> ClipMatch | Absent:
+    """Recognize topology and exclusive ownership independently of arithmetic."""
+    match producer_chain(
+        index, boundary.dequantizer.input[0], ("QuantizeLinear", "Clip", "Conv")
     ):
-        return None
-    if divisor.shape != (1, weight.dims[0], *((1,) * (len(weight.dims) - 2))):
-        return None
+        case Absent() as absent:
+            return absent
+        case tuple() as nodes:
+            quantizer, clip, convolution = nodes
+    match index.producer(convolution.input[1], "DequantizeLinear"):
+        case Absent() as absent:
+            return absent
+        case NodeProto() as weight:
+            chain = (convolution, clip, quantizer, boundary.dequantizer, weight)
     if (
-        np.any(divisor <= 0)
-        or weight_scale.shape != (weight.dims[0],)
-        or np.any(weight_scale <= 0)
+        len(clip.input) != 3
+        or len(weight.input) != 3
+        or not all(index.exclusive(node) for node in chain)
     ):
-        return None
-    scale, zero = encoding
+        return Absent(reason="clipping requires an exclusive Conv/Clip/QDQ chain")
+    match index.scalar_encoding(quantizer), index.scalar_encoding(boundary.dequantizer):
+        case ScalarEncoding() as encoded, ScalarEncoding() as decoded:
+            if np.array_equal(encoded.scale, decoded.scale) and np.array_equal(
+                encoded.zero, decoded.zero
+            ):
+                return ClipMatch(boundary, convolution, clip, quantizer, weight)
+            return Absent(reason="source quantizer and dequantizer encodings differ")
+        case _:
+            return Absent(reason="source QDQ encodings are unsupported")
+
+
+def _weight_parameters(
+    index: GraphIndex, matched: ClipMatch
+) -> WeightParameters | Absent:
+    """Admit channel-axis integer weights and a shape-matched constant bias."""
+    dequantizer = matched.weight_dequantizer
+    weight = index.constants.get(dequantizer.input[0])
+    axis = next((attr.i for attr in dequantizer.attribute if attr.name == "axis"), 1)
+    match weight, index.float_constant(dequantizer.input[1]):
+        case TensorProto() as tensor, np.ndarray() as scale:
+            shape = tuple(tensor.dims)
+        case _:
+            return Absent(reason="weight codes and FP32 scales must be constant")
     if (
-        low is None
-        or high is None
-        or low.ndim != 0
-        or high.ndim != 0
-        or low != 0
-        or high <= 0
-        or zero != 0
+        tensor.data_type not in (TensorProto.INT8, TensorProto.UINT8)
+        or len(shape) < 3
+        or axis not in (0, -len(shape))
     ):
-        return None
+        return Absent(reason="weight layout is not channel-axis integer convolution")
+    if scale.shape != (shape[0],) or np.any(scale <= 0):
+        return Absent(reason="weight scales must match positive output channels")
     bias: FloatArray | Absent = Absent(reason="convolution has no bias")
+    inputs = matched.convolution.input
+    if len(inputs) > 2 and inputs[2]:
+        match index.float_constant(inputs[2]):
+            case Absent() as absent:
+                return absent
+            case np.ndarray() as values:
+                if values.shape != scale.shape:
+                    return Absent(reason="bias shape differs from output channels")
+                bias = values
+    return WeightParameters(shape, scale, bias)
+
+
+def _clip_limits(index: GraphIndex, matched: ClipMatch) -> ClipLimits | Absent:
+    """Validate ReLU-style scalar bounds and the target quantization origin."""
+    clip = matched.clip
+    match (
+        index.float_constant(clip.input[1]),
+        index.float_constant(clip.input[2]),
+        index.scalar_encoding(matched.boundary.quantizer),
+    ):
+        case np.ndarray() as low, np.ndarray() as high, ScalarEncoding() as encoding:
+            valid = (
+                low.ndim == high.ndim == 0
+                and low == 0
+                and high > 0
+                and encoding.zero == 0
+            )
+            if valid:
+                return ClipLimits(high, encoding.scale)
+            return Absent(reason="clipping requires zero lower bound and zero point")
+        case _:
+            return Absent(reason="clip limits or output encoding are unsupported")
+
+
+def _scaled_parameters(
+    weight: WeightParameters, limits: ClipLimits, divisor: FloatArray
+) -> ScaledParameters | Absent:
+    """Calculate private scales, bias, and integer bounds in the smoothed domain."""
+    shape = (1, weight.shape[0], *((1,) * (len(weight.shape) - 2)))
+    if divisor.shape != shape or np.any(divisor <= 0):
+        return Absent(reason="divisor does not match positive output channels")
     with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
-        transformed = weight_scale / divisor.reshape(-1)
-        if len(conv.input) > 2 and conv.input[2]:
-            original_bias = editor.float_constant(conv.input[2])
-            if original_bias is None or original_bias.shape != weight_scale.shape:
-                return None
-            bias = original_bias / divisor.reshape(-1)
-        upper = high.astype(np.float64) / divisor / scale
-    if not np.all(np.isfinite(transformed)) or np.any(transformed <= 0):
-        return None
-    if not isinstance(bias, Absent) and not np.all(np.isfinite(bias)):
-        return None
+        scale = weight.scale / divisor.reshape(-1)
+        upper = limits.upper.astype(np.float64) / divisor / limits.scale
+        match weight.bias:
+            case Absent() as absent:
+                bias: FloatArray | Absent = absent
+            case np.ndarray() as values:
+                bias = values / divisor.reshape(-1)
+    if not np.all(np.isfinite(scale)) or np.any(scale <= 0):
+        return Absent(reason="scaled weight encoding is not finite and positive")
+    match bias:
+        case Absent():
+            pass
+        case np.ndarray() as values:
+            if not np.all(np.isfinite(values)):
+                return Absent(reason="scaled bias is not finite")
     bound = np.clip(np.rint(upper), 0, 255).astype(np.uint8)
-    return ClipRewrite(boundary, conv, clip, q, wdq, transformed, bound, bias)
+    return ScaledParameters(scale, bias, bound)
 
 
-def fold_clipping(editor: GraphEditor, boundary: ScalingBoundary) -> bool:
-    """Commit a checked rewrite; rounding changes are part of the opt-in mode."""
-    rewrite = _rewrite(editor, boundary)
-    if rewrite is None:
-        return False
-    conv = rewrite.convolution
-    rewrite.weight_dequantizer.input[1] = editor.add_float(
-        conv.name + "_output_scale", rewrite.weight_scale
+def plan_clipping(
+    index: GraphIndex, boundary: ScalingBoundary
+) -> RewritePatch | Absent:
+    """Compose topology recognition, numerical validation, and pure patch creation."""
+    match match_clipping(index, boundary):
+        case Absent() as absent:
+            return absent
+        case ClipMatch() as matched:
+            pass
+    match _weight_parameters(index, matched):
+        case Absent() as absent:
+            return absent
+        case WeightParameters() as weight:
+            pass
+    match _clip_limits(index, matched):
+        case Absent() as absent:
+            return absent
+        case ClipLimits() as limits:
+            pass
+    match index.float_constant(boundary.division.input[1]):
+        case Absent() as absent:
+            return absent
+        case np.ndarray() as divisor:
+            pass
+    match _scaled_parameters(weight, limits, divisor):
+        case Absent() as absent:
+            return absent
+        case ScaledParameters() as parameters:
+            return _patch(index, matched, parameters)
+
+
+def _patch(
+    index: GraphIndex, matched: ClipMatch, parameters: ScaledParameters
+) -> RewritePatch:
+    """Construct new nodes/constants without editing the matched protobuf views."""
+    conv = deepcopy(matched.convolution)
+    weight = deepcopy(matched.weight_dequantizer)
+    stem = conv.name
+    scale, bias, bound, quantized, quantizer_name, minimum_name = fresh_names(
+        index,
+        stem + "_output_scale",
+        stem + "_output_bias",
+        stem + "_clip_bound",
+        stem + "_before_clip",
+        stem + "_output_Q",
+        stem + "_int8_clip",
     )
-    if not isinstance(rewrite.bias, Absent):
-        conv.input[2] = editor.add_float(conv.name + "_output_bias", rewrite.bias)
-    bound_name = editor.names.new(conv.name + "_clip_bound")
-    editor.model.graph.initializer.append(
-        numpy_helper.from_array(rewrite.bound, bound_name)
+    weight.input[1] = scale
+    constants = [numpy_helper.from_array(parameters.weight_scale, scale)]
+    match parameters.bias:
+        case Absent():
+            pass
+        case np.ndarray() as values:
+            conv.input[2] = bias
+            constants.append(numpy_helper.from_array(values, bias))
+    constants.append(numpy_helper.from_array(parameters.bound, bound))
+    target = matched.boundary.quantizer
+    quantizer = helper.make_node(
+        "QuantizeLinear",
+        [conv.output[0], *target.input[1:3]],
+        [quantized],
+        name=quantizer_name,
     )
-    quantized = editor.names.new(conv.name + "_before_clip")
-    target = boundary.quantizer
-    editor.insertions[conv.name] = [
-        helper.make_node(
-            "QuantizeLinear",
-            [conv.output[0], *target.input[1:3]],
-            [quantized],
-            name=editor.names.new(conv.name + "_output_Q"),
+    minimum = helper.make_node(
+        "Min", [quantized, bound], list(target.output), name=minimum_name
+    )
+    removed = (
+        matched.clip,
+        matched.source_quantizer,
+        matched.boundary.dequantizer,
+        matched.boundary.division,
+        target,
+    )
+    return RewritePatch(
+        replacements=(
+            NodeReplacement(weight.name, (weight,)),
+            NodeReplacement(conv.name, (conv, quantizer, minimum)),
         ),
-        helper.make_node(
-            "Min",
-            [quantized, bound_name],
-            list(target.output),
-            name=editor.names.new(conv.name + "_int8_clip"),
-        ),
-    ]
-    editor.removed.update(
-        node.name
-        for node in (
-            rewrite.clip,
-            rewrite.source_quantizer,
-            boundary.dequantizer,
-            boundary.division,
-            target,
-        )
+        removed=frozenset(node.name for node in removed),
+        constants=tuple(constants),
     )
-    return True

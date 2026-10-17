@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Literal
 
 from pydantic import Field
-from pydantic_settings import CliImplicitFlag, CliSuppress, SettingsConfigDict
+from pydantic_settings import CliSuppress, SettingsConfigDict
 
 from examples._shared.vision.schema import DemoConfig as BaseConfig
 from examples._shared.vision.schema import ModelName
@@ -18,7 +18,3 @@ class Config(BaseConfig):
         default=(ModelName.MOBILENET_V2,)
     )
     output: Path = Field(default=Path("work_dir/artifacts/mobilenet_v2"))
-    ort_integer_scaling: CliImplicitFlag[bool] = Field(
-        default=False,
-        description="Opt into ORT integer SmoothQuant scaling; changes rounding.",
-    )

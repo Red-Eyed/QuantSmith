@@ -3,6 +3,7 @@
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic_settings import BaseSettings, CliImplicitFlag, SettingsConfigDict
@@ -115,7 +116,7 @@ class ModelReport(BaseModel):
     weights: str = Field()
     preprocessing: str = Field()
     export_max_abs_error: float = Field(ge=0)
-    ort_integer_scaling: bool = Field(default=False)
+    execution_target: Literal["onnxruntime"] = "onnxruntime"
     variants: tuple[VariantReport, ...] = Field()
     gallery: tuple[GalleryItem, ...] = Field()
 

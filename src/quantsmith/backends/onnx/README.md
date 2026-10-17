@@ -40,16 +40,17 @@ are skipped. Floating-point rounding can change slightly, and subsequent INT8
 encodings can change; fresh calibration is essential.
 
 The pass returns the backend's existing `Result[ModelProto, QuantSmithError]`
-contract and owns its output. It introduces no optimizer protocol: there is one
-implementation and no established substitution requirement. ORT remains responsible
+contract and owns its output. Concrete pass functions implement the graph rewrites without a new public
+optimizer protocol. ORT remains responsible
 for provider-specific QDQ fusion, kernel selection, and buffer management.
 
-## Optional ONNX Runtime integer scaling
+## ONNX Runtime integer scaling
 
-Pass `ort_integer_scaling=True` to `pipeline.quantize` to target the CPU ORT
-execution path for SmoothQuant followed by built-in UINT8 `StaticW8A8`.
-The default remains portable ONNX. The mode is inactive without a preceding
-rescaling stage or when activation encodings are signed.
+ONNX Runtime is the execution target. SmoothQuant followed by built-in UINT8
+`StaticW8A8` automatically uses the calibrated integer execution path where
+supported. ONNX remains the serialization format; execution may use ORT contrib
+operators. Stages without prior smoothing and signed activation stages do not
+acquire additional scaling boundaries.
 
 Before static calibration, it extends the rules with MinMax UINT8 boundaries on
 remaining smoothing divisions and connected residual Add operands. Explicit
@@ -65,10 +66,26 @@ use `com.microsoft::QLinearMul` with UINT8 reciprocal coefficients. Shared produ
 values, exposed outputs, unsupported encodings/layouts, and coefficients that
 cannot be represented safely are preserved or use the supported fallback.
 
-This mode changes rounding and quantizes additional tensors. Plans record the
+Integer execution changes rounding and quantizes additional tensors. Plans record the
 pre-rewrite calibration decisions, including the new boundaries; the final ONNX
 initializers hold the rewritten weight scales and integer bounds. Evaluate the
 final graph for accuracy. QLinearMul requires ORT's contrib operator domain;
 other runtimes are not promised to execute these graphs. ORT still chooses and
 fuses its kernels. Speed and memory improvements require measurement on the target
 model and hardware; file size alone does not establish RAM savings.
+
+## Functional rewrite planning
+
+`ort_scaling.graph.GraphIndex` provides read-only queries on an owned normalized
+revision. Recognition produces named matches, numerical helpers return validated
+parameters, and `plan_clipping` / `plan_multiplication` produce complete
+`RewritePatch` records or `Absent(reason=...)`. The ordered rule selection does not
+modify graph nodes, constants, connectivity, or name reservations. Reserving a
+patch's names returns a new index value sharing the same read-only connectivity.
+
+Only `apply_patches` edits the existing graph, after all planning has completed.
+The pipeline transfers an owned model to this function, preserving caller storage.
+Local construction of new nodes and constants never rewrites indexed protobufs.
+Stage progression similarly returns new `StageState` values and dispatches between
+smoothing and quantization through explicit typed variants. Calibration and ORT
+execution remain in the shell, with explicit `Ok`/`Err` handling.

@@ -1,4 +1,4 @@
-"""Runtime numerical and ownership contracts for the opt-in ORT deployment mode."""
+"""Runtime numerical and ownership contracts for default ORT integer execution."""
 
 from collections.abc import Iterator, Mapping
 from copy import deepcopy
@@ -299,19 +299,8 @@ def test_clip_fusion_preserves_unsupported_paths(
     assert not any(node.op_type == "Min" for node in result.graph.node)
 
 
-def test_disabled_mode_does_not_add_boundaries(clipped_boundary: ModelProto) -> None:
-    """A normal static-only pipeline is byte-identical with the unused option on."""
-    default = expect_ok(
-        quantize(clipped_boundary, lambda: (), (), ort_integer_scaling=False)
-    )
-    enabled = expect_ok(
-        quantize(clipped_boundary, lambda: (), (), ort_integer_scaling=True)
-    )
-    assert default.model.SerializeToString() == enabled.model.SerializeToString()
-
-
 def test_explicit_exclusions_remain_authoritative(clipped_boundary: ModelProto) -> None:
-    """An explicit exclusion prevents the optional mode from claiming an edge."""
+    """An explicit exclusion prevents boundary quantization from claiming an edge."""
     graph = expect_ok(describe(clipped_boundary))
     rules = Rules(
         default=StaticW8A8(),
@@ -368,7 +357,7 @@ def replay_inputs() -> Iterator[Mapping[str, FloatArray]]:
         yield {"x": rng.normal(size=(1, 2, 3, 3)).astype(np.float32)}
 
 
-def test_pipeline_mode_adds_calibrated_boundaries(residual_model: ModelProto) -> None:
+def test_pipeline_adds_calibrated_boundaries(residual_model: ModelProto) -> None:
     """Exercise smoothing, fresh statistics, clipping fusion and residual planning."""
     from quantsmith.runtime import OnnxEvaluator
 
@@ -381,12 +370,8 @@ def test_pipeline_mode_adds_calibrated_boundaries(residual_model: ModelProto) ->
         ),
     )
     stages = (smoothing, supported(StaticW8A8()))
-    portable = expect_ok(quantize(residual_model, replay_inputs, stages))
-    deployed = expect_ok(
-        quantize(residual_model, replay_inputs, stages, ort_integer_scaling=True)
-    )
+    deployed = expect_ok(quantize(residual_model, replay_inputs, stages))
     assert residual_model.SerializeToString() == before
-    assert not any(node.domain == "com.microsoft" for node in portable.model.graph.node)
     assert any(node.op_type == "QLinearMul" for node in deployed.model.graph.node)
     assert any(node.op_type == "Min" for node in deployed.model.graph.node)
     assert not any(node.op_type == "Div" for node in deployed.model.graph.node)
@@ -408,16 +393,18 @@ def test_pipeline_mode_adds_calibrated_boundaries(residual_model: ModelProto) ->
 
 
 @pytest.mark.parametrize("dtype", [IntegerType.UINT8, IntegerType.INT8])
-def test_static_only_option_is_inactive(
+def test_static_only_has_no_scaling_boundaries(
     residual_model: ModelProto, dtype: IntegerType
 ) -> None:
-    """No smoothing means no additional operations, encodings, or calibration work."""
+    """Static-only stages do not acquire smoothing or residual boundary operations."""
     stages = (supported(StaticW8A8(activation_type=dtype)),)
-    portable = expect_ok(quantize(residual_model, replay_inputs, stages))
-    enabled = expect_ok(
-        quantize(residual_model, replay_inputs, stages, ort_integer_scaling=True)
-    )
-    assert portable.model.SerializeToString() == enabled.model.SerializeToString()
+    result = expect_ok(quantize(residual_model, replay_inputs, stages))
+    assert not any(node.op_type == "QLinearMul" for node in result.model.graph.node)
+    assert {operation.node for operation in result.plans[0].operations} == {
+        "producer",
+        "middle",
+        "consumer",
+    }
 
 
 def test_residual_exclusion_survives_boundary_extension(
@@ -448,17 +435,20 @@ def test_residual_exclusion_survives_boundary_extension(
     assert isinstance(updated.resolve(residual, graph), Exclude)
 
 
-def test_signed_smoothquant_skips_integer_mode(residual_model: ModelProto) -> None:
-    """UINT8-only rewrites leave signed activation deployment behavior unchanged."""
+def test_signed_smoothquant_retains_float_scaling(residual_model: ModelProto) -> None:
+    """Signed activation stages retain their floating-point scaling paths."""
     stages = (
         supported(SmoothQuant()),
         supported(StaticW8A8(activation_type=IntegerType.INT8)),
     )
-    portable = expect_ok(quantize(residual_model, replay_inputs, stages))
-    enabled = expect_ok(
-        quantize(residual_model, replay_inputs, stages, ort_integer_scaling=True)
-    )
-    assert portable.model.SerializeToString() == enabled.model.SerializeToString()
+    result = expect_ok(quantize(residual_model, replay_inputs, stages))
+    assert not any(node.op_type == "QLinearMul" for node in result.model.graph.node)
+    assert any(node.op_type == "Div" for node in result.model.graph.node)
+    assert {operation.node for operation in result.plans[1].operations} == {
+        "producer",
+        "middle",
+        "consumer",
+    }
 
 
 def test_boundary_missing_statistics_is_expected_failure(
@@ -477,3 +467,50 @@ def test_boundary_missing_statistics_is_expected_failure(
         algorithm.plan(node, graph, Statistics(ranges={}, histograms={})),
         "statistics were not collected",
     )
+
+
+@pytest.mark.parametrize("kind", ["integer", "clip"])
+def test_rewrite_planning_is_pure(
+    integer_boundary: ModelProto, clipped_boundary: ModelProto, kind: str
+) -> None:
+    """Repeated planning is deterministic and leaves every input protobuf intact."""
+    from quantsmith.backends.onnx.ort_scaling import plan_boundary
+    from quantsmith.backends.onnx.ort_scaling.graph import (
+        RewritePatch,
+        ScalingBoundary,
+        apply_patches,
+        index_graph,
+        scaling_boundary,
+    )
+    from quantsmith.domain import Absent
+
+    model = integer_boundary if kind == "integer" else clipped_boundary
+    before = model.SerializeToString()
+    index = index_graph(model)
+    division = next(node for node in model.graph.node if node.op_type == "Div")
+    match scaling_boundary(index, division):
+        case Absent(reason=reason):
+            pytest.fail(reason)
+        case ScalingBoundary() as boundary:
+            pass
+    match plan_boundary(index, boundary):
+        case Absent(reason=reason):
+            pytest.fail(reason)
+        case RewritePatch() as first:
+            assert first == plan_boundary(index, boundary)
+    assert model.SerializeToString() == before
+    revised = index.reserve(first)
+    assert revised is not index
+    assert revised.producers is index.producers
+    assert revised.names > index.names
+    match plan_boundary(revised, boundary):
+        case Absent(reason=reason):
+            pytest.fail(reason)
+        case RewritePatch() as second:
+            assert {value.name for value in first.constants}.isdisjoint(
+                value.name for value in second.constants
+            )
+    applied = apply_patches(deepcopy(model), (first,))
+    expected = expect_ok(lower_integer_scaling(model, frozenset({"scaled"})))
+    assert model.SerializeToString() == before
+    assert applied.SerializeToString() == expected.SerializeToString()

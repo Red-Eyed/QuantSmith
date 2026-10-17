@@ -87,16 +87,10 @@ def model_section(model: ModelReport) -> str:
     """Keep summary metrics and bounded visual examples together."""
     rows = "".join(variant_row(item) for item in model.variants)
     gallery = "".join(gallery_card(item) for item in model.gallery)
-    scaling = (
-        "<p>SmoothQuant uses opt-in ONNX Runtime integer scaling. "
-        "It changes quantization rounding and requires ORT-specific operators.</p>"
-        if model.ort_integer_scaling
-        else ""
-    )
     return (
         f'<section data-model="{model.model.value}"><h2>{model.model.value}</h2>'
         f"<p>{escape(model.weights)} · Export max absolute error: "
-        f"{model.export_max_abs_error:.6g}</p>{scaling}"
+        f"{model.export_max_abs_error:.6g}</p>"
         '<div class="scroll"><table><thead><tr><th>Artifact / variant</th>'
         "<th>Top-1</th><th>Top-5</th><th>FP32 agreement</th><th>Logit MSE</th>"
         "<th>Max error</th><th>Latency med / p95 ms</th>"
@@ -133,7 +127,8 @@ ORT optimizations enabled;
 preprocessing, export, and session startup excluded. Adapter validation is included.
 Artifact sizes are measured on disk, not runtime RAM. Quantized constant weights
 use integer storage; unquantized tensors remain floating point. SmoothQuant is
-applied only to eligible ungrouped operators.
+applied only to eligible ungrouped operators. Execution targets ONNX Runtime;
+supported smoothing boundaries use integer operations with changed rounding.
 Softmax scores in the gallery are not calibrated probabilities.</p>
 <p><a href="results.json">Full JSON results</a> ·
 <a href="summary.md">Markdown summary</a></p>
@@ -183,15 +178,6 @@ def render_markdown(report: SuiteReport) -> str:
                 f"{metric.mse_vs_onnx:.6g} | {item.latency.median_ms:.2f} | "
                 f"{item.artifact_bytes / 2**20:.2f} |"
             )
-    for model in report.models:
-        if model.ort_integer_scaling:
-            lines.extend(
-                [
-                    "",
-                    f"{model.model.value} SmoothQuant uses opt-in ORT integer scaling; "
-                    "rounding changes and the graph requires ORT-specific operators.",
-                ]
-            )
     lines.extend(
         [
             "",
@@ -203,6 +189,8 @@ def render_markdown(report: SuiteReport) -> str:
             "",
             "Quantized constant weights use integer storage. MiB measures file size; "
             "runtime RAM and speedup depend on execution-provider optimizations.",
+            "Execution targets ONNX Runtime; supported SmoothQuant boundaries use "
+            "integer operations with changed rounding.",
             "",
             f"Environment: {report.environment.model_dump_json()}",
             "",

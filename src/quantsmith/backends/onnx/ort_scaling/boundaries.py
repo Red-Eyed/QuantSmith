@@ -1,5 +1,6 @@
 """Declare optional calibrated UINT8 boundaries without changing algorithm protocols."""
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 
 from onnx import ModelProto, TensorProto
@@ -57,7 +58,7 @@ class BoundaryNames:
     names: frozenset[str]
 
     def matches(self, node: Node, graph: Graph, /) -> bool:
-        """Limit the optional algorithm to the selected boundary nodes."""
+        """Limit boundary quantization to the selected node identities."""
         return node.name in self.names
 
 
@@ -67,41 +68,31 @@ def _inputs(node: Node) -> tuple[str, ...]:
 
 
 def _explicitly_excluded(node: Node, graph: Graph, rules: Rules[Algorithm]) -> bool:
-    """Respect the last matching override, as required by the ordered rules contract."""
-    excluded = False
-    for rule in rules.overrides:
-        if rule.selector.matches(node, graph):
-            excluded = isinstance(rule.decision, Exclude)
-    return excluded
+    """Respect the last matching override in the ordered rules contract."""
+    decisions = tuple(
+        rule.decision for rule in rules.overrides if rule.selector.matches(node, graph)
+    )
+    match decisions:
+        case (*_, Exclude()):
+            return True
+        case _:
+            return False
 
 
-def with_boundaries(
-    model: ModelProto,
-    graph: Graph,
-    rules: Rules[Algorithm],
-    divisions: frozenset[str],
-) -> Rules[Algorithm]:
-    """Extend a UINT8 static stage only within the smoothed quantized region.
+def _static_uint8(node: Node, graph: Graph, rules: Rules[Algorithm]) -> bool:
+    """Recognize the built-in deployment contract without claiming custom methods."""
+    match rules.resolve(node, graph):
+        case StaticW8A8(activation_type=IntegerType.UINT8):
+            return True
+        case _:
+            return False
 
-    Explicit exclusion overrides remain authoritative. Boundary ranges always use
-    MinMax even if the selected weight-bearing algorithm uses Percentile clipping.
-    """
+
+def _ancestors(
+    graph: Graph, roots: tuple[Node, ...], rules: Rules[Algorithm]
+) -> Iterator[Node]:
+    """Walk the supported region once, stopping at explicit exclusion boundaries."""
     producers = {output: node for node in graph.nodes for output in node.outputs}
-    pending: list[Node] = []
-    for node in graph.nodes:
-        decision = rules.resolve(node, graph)
-        if (
-            isinstance(decision, StaticW8A8)
-            and decision.activation_type == IntegerType.UINT8
-        ):
-            pending.append(node)
-    visited: set[str] = set()
-    eligible: list[Node] = []
-    float_names = {
-        value.name
-        for value in (*model.graph.input, *model.graph.value_info, *model.graph.output)
-        if value.type.tensor_type.elem_type == TensorProto.FLOAT
-    }
     traversable = {
         "Conv",
         "Gemm",
@@ -114,30 +105,68 @@ def with_boundaries(
         "ReduceMean",
         "BatchNormalization",
     }
+    pending = list(roots)
+    visited: set[str] = set()
     while pending:
         node = pending.pop()
-        if node.name in visited or node.op not in traversable:
+        if (
+            node.name in visited
+            or node.op not in traversable
+            or _explicitly_excluded(node, graph, rules)
+        ):
             continue
         visited.add(node.name)
-        excluded = _explicitly_excluded(node, graph, rules)
-        if excluded:
-            continue
-        if (
-            (node.op == "Add" or (node.op == "Div" and node.outputs[0] in divisions))
-            and isinstance(rules.resolve(node, graph), Exclude)
-            and all(name in float_names for name in _inputs(node))
-        ):
-            eligible.append(node)
+        yield node
         pending.extend(producers[name] for name in node.inputs if name in producers)
+
+
+def _is_boundary(node: Node, divisions: frozenset[str]) -> bool:
+    """Classify residual operands and only the divisions introduced by smoothing."""
+    match node:
+        case Node(op="Add"):
+            return True
+        case Node(op="Div", outputs=(output,)):
+            return output in divisions
+        case _:
+            return False
+
+
+def _unclaimed(node: Node, graph: Graph, rules: Rules[Algorithm]) -> bool:
+    """Leave explicitly configured custom algorithms in control of their nodes."""
+    match rules.resolve(node, graph):
+        case Exclude():
+            return True
+        case _:
+            return False
+
+
+def with_boundaries(
+    model: ModelProto, graph: Graph, rules: Rules[Algorithm], divisions: frozenset[str]
+) -> Rules[Algorithm]:
+    """Return rules extended with calibrated UINT8 boundaries in smoothed regions.
+
+    Explicit exclusions and custom algorithms remain authoritative. Boundary
+    ranges use MinMax even when weight-bearing operators use Percentile clipping.
+    """
+    if not divisions:
+        return rules
+    roots = tuple(node for node in graph.nodes if _static_uint8(node, graph, rules))
+    float_names = frozenset(
+        value.name
+        for value in (*model.graph.input, *model.graph.value_info, *model.graph.output)
+        if value.type.tensor_type.elem_type == TensorProto.FLOAT
+    )
+    eligible = tuple(
+        node
+        for node in _ancestors(graph, roots, rules)
+        if _is_boundary(node, divisions)
+        and _unclaimed(node, graph, rules)
+        and all(name in float_names for name in _inputs(node))
+    )
     if not any(node.op == "Div" for node in eligible):
         return rules
-    return Rules(
-        default=rules.default,
-        overrides=rules.overrides
-        + (
-            Rule(
-                selector=BoundaryNames(frozenset(node.name for node in eligible)),
-                decision=BoundaryQuantizer(),
-            ),
-        ),
+    extension: Rule[Algorithm] = Rule(
+        selector=BoundaryNames(frozenset(node.name for node in eligible)),
+        decision=BoundaryQuantizer(),
     )
+    return Rules(default=rules.default, overrides=rules.overrides + (extension,))

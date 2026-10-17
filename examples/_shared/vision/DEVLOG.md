@@ -1,5 +1,35 @@
 # Pretrained model experiment log
 
+## 2026-10-17 — Functional rewrite planning and default ORT execution
+
+The 0.8.3 implementation mixed recognition, numerical validation, name allocation,
+and graph mutation in conditional-heavy functions. Refactor the ORT path into a
+read-only graph index, named pattern/parameter records, pure rewrite planners,
+and a separate patch-application boundary. Rule selection returns the first
+applicable concrete patch or an `Absent` reason; it does not mutate matched nodes.
+Name reservations return a new index sharing existing connectivity. Stage
+progression returns new state records and explicitly dispatches between smoothing
+and quantization. No public optimizer protocol or Result chaining is introduced.
+
+ONNX Runtime is now the execution target. Remove the opt-in pipeline keyword and
+MobileNetV2 CLI flag, automatically extending supported UINT8 SmoothQuant stages.
+Reports identify `execution_target: "onnxruntime"`. Fresh calibration, explicit
+exclusions, numerical guards, and unsupported/signed fallbacks remain intact.
+
+The default-path MobileNetV2 rerun uses the same seed 42, 128 calibration images,
+and 256 held-out images. MinMax is 3.364 ms and 162/256 correct; SmoothQuant is
+3.398 ms and 166/256 correct. Artifact sizes remain 3,941,012 and 3,934,455 bytes.
+Direct deployment-session comparison with the previously verified 0.8.3 ORT graph
+(commit `9c74ffa`) gives exactly zero maximum absolute logit difference across all
+256 held-out images. Outputs are under `work_dir/artifacts/mobilenet_v2_ort_functional/`.
+These measurements preserve the prior performance/accuracy result and do not
+establish new accuracy or RAM improvements.
+
+Regression coverage additionally checks that repeated rewrite planning is
+identical, does not change any input protobuf bytes, reserves names without
+mutating connectivity, and applies to the same graph as the lowering entry point.
+`just check` passes Ruff, strict Pyrefly, and all 483 tests.
+
 ## 2026-10-17 — SmoothQuant runtime fusion experiments
 
 The direct-producer folding draft removes two MobileNetV2 divisions, recovering

@@ -955,7 +955,7 @@ wheels = [
 
 [[package]]
 name = "quantsmith"
-version = "0.8.3"
+version = "0.8.4"
 source = { editable = "." }
 dependencies = [
     { name = "numpy" },
