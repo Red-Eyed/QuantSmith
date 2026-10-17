@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.10.1
+
+### Tracked Regressions
+
+- BF16 storage changes three of 32 evaluated captioning outputs and lowers CIDEr
+  from 0.243301 to 0.232028 and BLEU-4 from 0.110714 to 0.094637 on the bounded
+  saved-checkpoint study. FP16 preserves all captions in that study. BF16 remains
+  opt-in; wider numeric range does not imply better task accuracy.
+
+### New Features
+
+- Add `BFloat16StorageConfig` for two-byte BF16 constant storage restored to FP32
+  during ORT initialization. Use ties-to-even rounding, preserve nonfinite and
+  out-of-range tensors in FP32, and keep the existing size threshold explicit.
+  BF16 has wider range and coarser precision than FP16; evaluate task accuracy.
+
+### Improvements
+
+- Share the owned constant-storage graph rewrite between FP16 and BF16 without
+  changing FP16 encoding. Reserve intermediate value-info names when allocating
+  restoration tensors to avoid collisions.
+
 ## 0.10.0
 
 ### Highlights

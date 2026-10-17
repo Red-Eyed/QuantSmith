@@ -101,10 +101,11 @@ per layer, compose [rules](src/quantsmith/rules/README.md) with `StaticW8A8`,
 `SmoothQuant`, and `Exclude`.
 
 For smaller files with FP32 execution, use
-[`Float16StorageConfig`](docs/float16-storage.md) and `.calibrate([])`.
-It stores eligible constants as FP16 and relies on ORT graph optimization to
+[`Float16StorageConfig` or `BFloat16StorageConfig`](docs/float16-storage.md)
+and `.calibrate([])`. They store eligible constants in two bytes and rely on ORT
+graph optimization to
 restore them once at initialization. Runtime RAM can increase; evaluate accuracy
-after FP16 rounding.
+after rounding. BF16 supports a wider range but has coarser precision than FP16.
 
 ## What you can inspect and change
 

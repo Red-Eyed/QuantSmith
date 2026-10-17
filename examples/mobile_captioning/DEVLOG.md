@@ -31,3 +31,21 @@ projections outside integer execution. ORT may fuse connected CNN residual addit
 Open: useful captioning quality after larger training, generated-prefix calibration,
 incremental KV caching in Stackformers, reducing repeated vocabulary projection work,
 and isolated inference workspace memory. Smoke-scale results cannot settle these.
+## 2026-10-17 — Compact BF16 storage experiment
+
+Static integer decoder projections regressed latency, motivating storage-only
+compression with FP32 execution. Evaluated the opt-in `BFloat16StorageConfig`
+against the same saved checkpoint and disjoint 32-image evaluation set; no
+training or KV-cache changes. ROM falls from 31.041 to 16.287 MiB. ORT folds all
+storage Casts before execution. Two fresh-process sweeps (20 warmups, 100 timed
+runs, one thread) give FP32 caption medians 12.122/11.899 ms and BF16
+12.194/12.104 ms, with peak RSS about 127.8 versus 133.3 MiB. These observations
+do not establish a speedup or latency equivalence.
+
+BF16 preserves 29/32 captions, CIDEr changes 0.243301 → 0.232028 and BLEU-4
+0.110714 → 0.094637. The earlier FP16-storage experiment preserved 32/32 captions.
+Keep BF16 optional; do not infer quality from its wider exponent range or from
+unchanged teacher-forced token accuracy. Startup cost and broader held-out
+quality remain unmeasured. Raw reports/traces are under ignored
+`work_dir/artifacts/storage_bfloat16/`; design and scope are documented in
+`docs/float16-storage.md`.

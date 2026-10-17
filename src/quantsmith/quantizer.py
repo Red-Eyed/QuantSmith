@@ -11,7 +11,11 @@ from onnx import ModelProto
 from quantsmith.backends.onnx.pipeline import quantize
 from quantsmith.calibration import Samples
 from quantsmith.calibration.contracts import DEFAULT_CHANNEL_HISTOGRAM_BYTES
-from quantsmith.config import Float16StorageConfig, QuantizationConfig
+from quantsmith.config import (
+    BFloat16StorageConfig,
+    Float16StorageConfig,
+    QuantizationConfig,
+)
 from quantsmith.domain import InputArray
 from quantsmith.pipeline import FloatGraph, Pipeline, QuantizationResult
 from quantsmith.result import FailureKind, QuantSmithError, Result, failure
@@ -49,11 +53,11 @@ class Quantizer[State]:
 
     @classmethod
     def from_config(
-        cls, config: QuantizationConfig | Float16StorageConfig
+        cls, config: QuantizationConfig | Float16StorageConfig | BFloat16StorageConfig
     ) -> Quantizer[Configured]:
         """Compile a validated configuration without running or capturing a model."""
         match config:
-            case Float16StorageConfig():
+            case Float16StorageConfig() | BFloat16StorageConfig():
                 return cls.from_pipeline(config.pipeline())
             case QuantizationConfig():
                 return Quantizer(

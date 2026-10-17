@@ -12,6 +12,7 @@ from quantsmith.algorithms.smoothquant.joint.ranges import (
     ChannelSelection,
 )
 from quantsmith.algorithms.static import StaticW8A8
+from quantsmith.backends.onnx.bfloat16_storage import BFloat16StorageStage
 from quantsmith.backends.onnx.float16_storage import Float16StorageStage
 from quantsmith.backends.onnx.stages import (
     FinishTransform,
@@ -51,6 +52,24 @@ class Float16StorageConfig(BaseModel):
     def pipeline(self) -> Pipeline[FloatGraph, QuantizationResult]:
         """Declare a storage transform without unused quantization settings."""
         return Pipeline(Float16StorageStage(self.minimum_elements)).then(
+            FinishTransform()
+        )
+
+
+class BFloat16StorageConfig(BaseModel):
+    """Store eligible constants as BF16 with FP32 execution and no calibration.
+
+    BF16 has wider range and coarser precision than FP16. Keep ORT graph
+    optimization enabled to fold restoration casts during initialization.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    kind: Literal["bfloat16_storage"] = "bfloat16_storage"
+    minimum_elements: int = Field(default=256, ge=1, strict=True)
+
+    def pipeline(self) -> Pipeline[FloatGraph, QuantizationResult]:
+        """Declare storage-only execution without integer quantization settings."""
+        return Pipeline(BFloat16StorageStage(self.minimum_elements)).then(
             FinishTransform()
         )
 
