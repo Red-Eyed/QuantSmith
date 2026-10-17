@@ -18,6 +18,10 @@ also changed accuracy; it remains archived on
 The project targets ONNX Runtime. ONNX is its serialized graph format. No backend
 selection protocol or backend type parameter is needed.
 
+For compact FP16 constant storage with FP32 execution, use the separate
+[`Float16StorageConfig`](float16-storage.md). It compiles a transform-only pipeline
+and needs no calibration samples or integer execution audit.
+
 `OutputSelectedSmoothingConfig` adds an opt-in `FloatGraph -> QuantizedGraph`
 selection step before the final audit. It compares declared complete-graph
 candidates and returns a typed `selection` report. Existing declarations still

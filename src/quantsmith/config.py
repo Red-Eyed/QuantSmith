@@ -12,7 +12,9 @@ from quantsmith.algorithms.smoothquant.joint.ranges import (
     ChannelSelection,
 )
 from quantsmith.algorithms.static import StaticW8A8
+from quantsmith.backends.onnx.float16_storage import Float16StorageStage
 from quantsmith.backends.onnx.stages import (
+    FinishTransform,
     QuantizationStage,
     ReuseQuantizersStage,
     TransformStage,
@@ -33,6 +35,24 @@ from quantsmith.pipeline.policies import (
     QuantizedMatMulOutputs,
 )
 from quantsmith.rules import ByOperator, Exclude, Rule, Rules
+
+
+class Float16StorageConfig(BaseModel):
+    """Store eligible constants as FP16 and restore FP32 at ORT initialization.
+
+    This mode needs no calibration and makes no integer-execution or RAM claim.
+    ORT graph optimization must remain enabled to fold the restoration casts.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    kind: Literal["float16_storage"] = "float16_storage"
+    minimum_elements: int = Field(default=256, ge=1, strict=True)
+
+    def pipeline(self) -> Pipeline[FloatGraph, QuantizationResult]:
+        """Declare a storage transform without unused quantization settings."""
+        return Pipeline(Float16StorageStage(self.minimum_elements)).then(
+            FinishTransform()
+        )
 
 
 class MinMaxConfig(BaseModel):
