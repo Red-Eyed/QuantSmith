@@ -16,6 +16,7 @@ from examples._shared.schema import (
     QuantizationMethod,
 )
 from quantsmith.domain import InputArray
+from quantsmith.pipeline.policies import Outputs, ProducerOutputs
 
 type Tokens = np.ndarray[tuple[int, ...], np.dtype[np.int64]]
 
@@ -62,6 +63,7 @@ class Config(BaseSettings, frozen=True):
         description="Text evaluation windows; Wine uses its full held-out split.",
     )
     histogram_bins: int = Field(default=2048, ge=2)
+    outputs: Outputs = Field(default_factory=ProducerOutputs, discriminator="kind")
     percentile: float = Field(default=99.99, gt=0, le=100)
     smoothquant_alpha: float = Field(default=0.5, ge=0, le=1)
     warmup: int = Field(default=5, ge=1)

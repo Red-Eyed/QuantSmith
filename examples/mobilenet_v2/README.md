@@ -58,7 +58,7 @@ INT8 result.
 ## Activation-function-aware calibration
 
 ```sh
-uv run --locked --group examples -m examples.mobilenet_v2.main --activation-function-aware true
+uv run --locked --group examples -m examples.mobilenet_v2.main --outputs '{"kind":"function"}'
 ```
 
 This opt-in changes the output encoding of eligible private `Conv → Relu/Clip`
@@ -69,7 +69,7 @@ still precedes fresh calibration. Shared/public Conv outputs, dynamic Clip bound
 and other activation functions retain their existing policy.
 
 Clipping and rounding change, so compare held-out accuracy as well as latency.
-The full example configuration, including this flag, is saved in
+The full example configuration, including this policy, is saved in
 `configuration.json`. Default behavior is unchanged. See
 [the design and measured tradeoffs](../../docs/integer-execution.md#activation-function-aware-calibration).
 
@@ -94,12 +94,13 @@ Replace the pretrained builder and matching preprocessing for your mobile model.
 The QuantSmith boundary in the example is deliberately small:
 
 ```python
-outcome = quantize(
-    fp32,
-    calibration_samples(calibration, loaded),
-    recipes(config)[QuantizationMethod.PERCENTILE],
-    histogram_bins=config.histogram_bins,
-    activation_function_aware=config.activation_function_aware,
+outcome = (
+    Quantizer.from_pipeline(
+        recipes(config).select(QuantizationMethod.PERCENTILE),
+        histogram_bins=config.histogram_bins,
+    )
+    .quantize(fp32)
+    .calibrate(Replay(calibration_samples(calibration, loaded)))
 )
 ```
 

@@ -12,6 +12,12 @@ from quantsmith.algorithms.smoothquant import SmoothQuant
 from quantsmith.algorithms.static import StaticW8A8
 from quantsmith.backends.onnx import describe, lower, normalize
 from quantsmith.backends.onnx.pipeline import quantize
+from quantsmith.backends.onnx.stages import (
+    FinishTransform,
+    QuantizationStage,
+    TransformStage,
+    VerifyStage,
+)
 from quantsmith.calibration import (
     HistogramStats,
     Requirement,
@@ -21,6 +27,7 @@ from quantsmith.calibration import (
 )
 from quantsmith.config import supported
 from quantsmith.domain import Encoding, Graph, PerChannel, PerTensor
+from quantsmith.pipeline import Pipeline
 from quantsmith.plan import QuantizationPlan, QuantizeInput, RescaleInput
 from quantsmith.rules import ByName, Exclude, Rule, Rules
 from quantsmith.runtime import OnnxEvaluator, evaluate
@@ -138,7 +145,13 @@ def test_static_with_bias(operator_case: OperatorCase, samples: Samples) -> None
     bias = np.linspace(-1, 1, 5, dtype=np.float32)
     model.graph.initializer.append(numpy_helper.from_array(bias, "bias"))
     model.graph.node[0].input.append("bias")
-    result = expect_ok(quantize(model, samples, (supported(StaticW8A8()),)))
+    result = expect_ok(
+        quantize(
+            model,
+            samples,
+            Pipeline(QuantizationStage(supported(StaticW8A8()))).then(VerifyStage()),
+        )
+    )
     projection = next(
         node for node in result.model.graph.node if node.name == "projection"
     )
@@ -176,7 +189,11 @@ def test_smoothquant_shared_weight(
             ),
         ),
     )
-    result = expect_ok(quantize(model, samples, (rules,)))
+    result = expect_ok(
+        quantize(
+            model, samples, Pipeline(TransformStage(rules)).then(FinishTransform())
+        )
+    )
     report = expect_ok(
         evaluate(
             OnnxEvaluator(model), OnnxEvaluator(result.model), samples, ("y", "other")

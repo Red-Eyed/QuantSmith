@@ -1,5 +1,26 @@
 # Model experiment log
 
+## 2026-10-17 — Typed ORT-only pipeline refactor
+
+Verification: 642 tests pass; Ruff and strict Pyrefly pass. All 15 accepted
+CNN/transformer × method exports reproduce their saved graph bytes exactly.
+
+Replace inferred stage kinds and runtime recipe lookup with typed `Pipeline`
+composition, explicit transform/quantization/audit transitions, and the fluent
+`Quantizer.from_config(config).quantize(model).calibrate(iterable)` facade.
+Existing model recipes explicitly retain runtime smoothing and producer-output
+calibration. The broader activation candidate remains on
+`experiment/broad-activation-regressions` at `b08407d`; it is not part of this branch.
+
+`FoldOnly` smoothing accepts private affine folds transactionally and leaves
+unsupported regions unchanged before ordinary MinMax/Percentile calibration.
+Tests verify FP32 equivalence, rollback, parameter ownership, deterministic replay,
+static rejection of illegal phase composition, and byte-identical plain-method
+fallback when all scales are unfoldable. Foldability alone does not establish
+whole-model task accuracy or faster inference. See
+[the design](../../../docs/declarative-pipeline.md).
+
+
 ## 2026-09-26 — Prioritize Transformer coverage
 
 The CNN-only demonstration did not exercise integer token inputs, embeddings,

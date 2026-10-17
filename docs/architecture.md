@@ -28,7 +28,7 @@ flowchart TD
     N --> S
     N --> O[ORT CPU compilation]
     O --> V[Integer coverage audit]
-    V --> R[PipelineResult: model, plans, execution evidence]
+    V --> R[QuantizationResult: model, plans, execution evidence]
     R --> E[Independent task and performance evaluation]
 ```
 
@@ -110,7 +110,7 @@ independent measured outcomes. There are no universal performance acceptance gat
 
 ## Activation-function-aware calibration
 
-The ORT pipeline exposes opt-in `activation_function_aware=True`. Pure eligibility
+The ORT pipeline exposes opt-in `outputs=FunctionOutputs()`. Pure eligibility
 and the `ActivationFunctionRanges` decorator are isolated in
 `integer_execution/activation_function_ranges.py`; standalone numerical algorithms
 retain their contracts. The decorator observes private Relu/Clip outputs for
@@ -136,3 +136,11 @@ and the compiled integer audit. See the
 [ONNX backend](../src/quantsmith/backends/onnx/README.md) ·
 [Plans](../src/quantsmith/plan/README.md) ·
 [Algorithm contracts](../src/quantsmith/algorithms/README.md)
+
+## Declarative pipeline and facade
+
+The [typed pipeline design](declarative-pipeline.md) describes the implemented
+`Quantizer.from_config(config).quantize(model).calibrate(iterable)` lifecycle,
+open `Step` protocol, graph phases, ADT policies, and fold-only smoothing.
+Concrete ORT steps declare their transitions; the shell no longer infers stage
+kinds from algorithm output. There is no backend selection abstraction.

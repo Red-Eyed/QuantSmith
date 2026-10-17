@@ -75,11 +75,13 @@ Replace the builder/checkpoint in `load_model()` and provide its exact inference
 The QuantSmith boundary in the example is deliberately small:
 
 ```python
-outcome = quantize(
-    fp32,
-    calibration_samples(calibration, loaded),
-    recipes(config)[QuantizationMethod.PERCENTILE],
-    histogram_bins=config.histogram_bins,
+outcome = (
+    Quantizer.from_pipeline(
+        recipes(config).select(QuantizationMethod.PERCENTILE),
+        histogram_bins=config.histogram_bins,
+    )
+    .quantize(fp32)
+    .calibrate(Replay(calibration_samples(calibration, loaded)))
 )
 ```
 

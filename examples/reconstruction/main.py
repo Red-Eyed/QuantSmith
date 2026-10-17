@@ -15,10 +15,11 @@ from rich.console import Console
 
 from examples._shared.plans import save_plans
 from examples.projection.model import example_model, sample_source
-from quantsmith.backends.onnx.pipeline import PipelineResult, quantize
+from quantsmith import Quantizer, Replay
 from quantsmith.backends.onnx.reconstruction import reconstruct
 from quantsmith.calibration import Samples
 from quantsmith.config import PercentileConfig, QuantizationConfig
+from quantsmith.pipeline import QuantizationResult
 from quantsmith.reconstruction import Reconstructor
 from quantsmith.reconstruction.gptqv2 import GPTQv2
 from quantsmith.reconstruction.qdrop import QDrop
@@ -78,16 +79,24 @@ class Report(BaseModel, frozen=True):
 
 def candidate(
     model: ModelProto, samples: Samples, method: Method, config: Config
-) -> Result[PipelineResult, QuantSmithError]:
+) -> Result[QuantizationResult, QuantSmithError]:
     """Apply each method to the same original graph and replay factory."""
     match method:
         case Method.MINMAX:
-            return quantize(model, samples, QuantizationConfig().stages())
+            return (
+                Quantizer.from_config(QuantizationConfig())
+                .quantize(model)
+                .calibrate(Replay(samples))
+            )
         case Method.PERCENTILE:
             settings = QuantizationConfig(
                 calibration=PercentileConfig(percentile=config.percentile)
             )
-            return quantize(model, samples, settings.stages())
+            return (
+                Quantizer.from_config(settings)
+                .quantize(model)
+                .calibrate(Replay(samples))
+            )
         case Method.GPTQV2:
             optimizer: Reconstructor = GPTQv2()
         case Method.QDROP:

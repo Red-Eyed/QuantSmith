@@ -16,7 +16,7 @@ regenerates the same sixteen-row input batches without retaining them.
 
 Read `recipes()` in `main.py`: this example uses `QuantizationConfig()` directly,
 `PercentileConfig` for clipping, and `smoothquant=True` for two-stage rescaling
-followed by MinMax. `run_variant()` calls `quantize()` and `evaluate()` explicitly.
+followed by MinMax. `run_variant()` uses the fluent quantizer and `evaluate()` explicitly.
 Separate calibration/evaluation seeds make the measured errors held-out errors.
 
 The ONNX input contract is `x`: float32 `[16, 8]`. Configuration is in [`schema.py`](schema.py).
@@ -69,16 +69,17 @@ prints the report as JSON. Downloads and output setup are automatic.
 
 ## Apply it to your task
 
-Replace `example_model()` with `onnx.load()` for your FP32 graph. Replace `sample_source()` with a factory yielding your real input mappings. Keep `recipes()`, `quantize()`, and `evaluate()` as the minimal workflow; select operators explicitly if your graph contains unsupported/dynamic weights.
+Replace `example_model()` with `onnx.load()` for your FP32 graph. Replace `sample_source()` with a factory yielding your real input mappings. Keep `recipes()`, the fluent quantizer, and `evaluate()` as the minimal workflow; select operators explicitly if your graph contains unsupported/dynamic weights.
 
 The QuantSmith boundary in the example is deliberately small:
 
 ```python
-outcome = quantize(
-    fp32,
-    sample_source(config.calibration_seed, config.calibration_samples),
-    recipes(config)[QuantizationMethod.PERCENTILE].stages(),
-    histogram_bins=config.histogram_bins,
+outcome = (
+    Quantizer.from_config(recipes(config).select(QuantizationMethod.PERCENTILE))
+    .quantize(fp32)
+    .calibrate(
+        Replay(sample_source(config.calibration_seed, config.calibration_samples))
+    )
 )
 ```
 

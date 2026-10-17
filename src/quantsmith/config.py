@@ -1,4 +1,4 @@
-"""Validated external configuration and built-in construction at the API edge."""
+"""Validated declarative construction of built-in ORT pipelines."""
 
 from typing import Literal, assert_never
 
@@ -7,8 +7,15 @@ from pydantic import BaseModel, ConfigDict, Field
 from quantsmith.algorithms import Algorithm
 from quantsmith.algorithms.smoothquant import SmoothQuant
 from quantsmith.algorithms.static import StaticW8A8
+from quantsmith.backends.onnx.stages import (
+    QuantizationStage,
+    TransformStage,
+    VerifyStage,
+)
 from quantsmith.calibration import MinMax, Percentile
 from quantsmith.domain import IntegerType
+from quantsmith.pipeline import FloatGraph, Pipeline, QuantizationResult
+from quantsmith.pipeline.policies import Folding, FoldOnly, Outputs, ProducerOutputs
 from quantsmith.rules import ByOperator, Exclude, Rule, Rules
 
 
@@ -27,8 +34,24 @@ class PercentileConfig(BaseModel):
     percentile: float = Field(default=99.99, gt=0, le=100, allow_inf_nan=False)
 
 
+class NoSmoothing(BaseModel):
+    """Declare plain static quantization without unused smoothing parameters."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    kind: Literal["none"] = Field(default="none")
+
+
+class SmoothQuantConfig(BaseModel):
+    """Declare smoothing and its permitted folding behavior."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    kind: Literal["smoothquant"] = Field(default="smoothquant")
+    alpha: float = Field(default=0.5, ge=0, le=1, allow_inf_nan=False)
+    folding: Folding = Field(default_factory=FoldOnly, discriminator="kind")
+
+
 class QuantizationConfig(BaseModel):
-    """Parse built-in defaults without restricting the open Python plugin API."""
+    """Validate built-in choices; extensions compose typed pipeline steps directly."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
     activation_type: IntegerType = Field(default=IntegerType.UINT8)
@@ -38,12 +61,14 @@ class QuantizationConfig(BaseModel):
     calibration: MinMaxConfig | PercentileConfig = Field(
         default_factory=MinMaxConfig, discriminator="kind"
     )
+    smoothing: NoSmoothing | SmoothQuantConfig = Field(
+        default_factory=NoSmoothing, discriminator="kind"
+    )
+    outputs: Outputs = Field(default_factory=ProducerOutputs, discriminator="kind")
     histogram_bins: int = Field(default=2048, ge=2, strict=True)
-    smoothquant_alpha: float = Field(default=0.5, ge=0, le=1, allow_inf_nan=False)
-    smoothquant: bool = Field(default=False, strict=True)
 
-    def stages(self) -> tuple[Rules[Algorithm], ...]:
-        """Construct built-ins only at the edge, leaving plugin dispatch open."""
+    def algorithm(self) -> StaticW8A8:
+        """Construct the static algorithm for execution or reconstruction adapters."""
         match self.calibration:
             case MinMaxConfig():
                 calibration = MinMax()
@@ -51,21 +76,29 @@ class QuantizationConfig(BaseModel):
                 calibration = Percentile(percentile=percentile)
             case _:
                 assert_never(self.calibration)
-        static = StaticW8A8(
+        return StaticW8A8(
             activation_type=self.activation_type,
             weight_type=self.weight_type,
             activation_symmetric=self.activation_symmetric,
             weight_symmetric=self.weight_symmetric,
             calibration=calibration,
         )
-        stages = (supported(static),)
-        if self.smoothquant:
-            return (supported(SmoothQuant(alpha=self.smoothquant_alpha)),) + stages
-        return stages
+
+    def pipeline(self) -> Pipeline[FloatGraph, QuantizationResult]:
+        """Compile typed alternatives to explicit stages without a runtime registry."""
+        quantization = QuantizationStage(supported(self.algorithm()), self.outputs)
+        match self.smoothing:
+            case NoSmoothing():
+                return Pipeline(quantization).then(VerifyStage())
+            case SmoothQuantConfig(alpha=alpha, folding=folding):
+                transform = TransformStage(supported(SmoothQuant(alpha=alpha)), folding)
+                return Pipeline(transform).then(quantization).then(VerifyStage())
+            case _:
+                assert_never(self.smoothing)
 
 
 def supported(algorithm: Algorithm) -> Rules[Algorithm]:
-    """Apply an algorithm to supported operators and explicitly exclude others."""
+    """Select built-in weight-bearing operators while leaving other nodes untouched."""
     return Rules(
         default=Exclude(reason="operator outside this stage's scope"),
         overrides=(

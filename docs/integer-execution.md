@@ -45,7 +45,7 @@ JSON identifies output records with `target: "output"`.
 
 ## Activation-function-aware calibration
 
-Enable `quantize(..., activation_function_aware=True)` to observe a following
+Select `outputs=FunctionOutputs()` in the quantization configuration to observe a following
 activation function when choosing a built-in static Conv's output encoding.
 It is disabled by default and does not change standalone `StaticW8A8`.
 
@@ -154,7 +154,7 @@ values from upstream integer regions.
 
 ## Verification and result API
 
-`PipelineResult.execution` contains an `ExecutionReport` for the static pipeline:
+`QuantizationResult.execution` contains an `ExecutionReport` for the static pipeline:
 
 - ORT runtime version and CPU provider identity;
 - source identity, source operator, compiled integer operator and domain;

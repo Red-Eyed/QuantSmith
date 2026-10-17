@@ -16,8 +16,15 @@ from quantsmith.backends.onnx import describe
 from quantsmith.backends.onnx.ort_scaling import lower_integer_scaling
 from quantsmith.backends.onnx.ort_scaling.boundaries import with_boundaries
 from quantsmith.backends.onnx.pipeline import quantize
+from quantsmith.backends.onnx.stages import (
+    FinishTransform,
+    QuantizationStage,
+    TransformStage,
+    VerifyStage,
+)
 from quantsmith.config import supported
 from quantsmith.domain import FloatArray, IntegerType
+from quantsmith.pipeline import Pipeline
 from quantsmith.plan import QuantizeInput
 from quantsmith.rules import ByName, Exclude, Rule, Rules
 from tests.outcomes import expect_error, expect_ok
@@ -369,7 +376,11 @@ def test_pipeline_adds_calibrated_boundaries(residual_model: ModelProto) -> None
             for name in ("middle", "consumer")
         ),
     )
-    stages = (smoothing, supported(StaticW8A8()))
+    stages = (
+        Pipeline(TransformStage(smoothing))
+        .then(QuantizationStage(supported(StaticW8A8())))
+        .then(VerifyStage())
+    )
     deployed = expect_ok(quantize(residual_model, replay_inputs, stages))
     assert residual_model.SerializeToString() == before
     assert any(node.op_type == "QLinearMul" for node in deployed.model.graph.node)
@@ -397,7 +408,9 @@ def test_static_only_calibrates_supported_residuals(
     residual_model: ModelProto, dtype: IntegerType
 ) -> None:
     """UINT8 residual regions receive boundaries without requiring smoothing."""
-    stages = (supported(StaticW8A8(activation_type=dtype)),)
+    stages = Pipeline(
+        QuantizationStage(supported(StaticW8A8(activation_type=dtype)))
+    ).then(VerifyStage())
     result = expect_ok(quantize(residual_model, replay_inputs, stages))
     assert not any(node.op_type == "QLinearMul" for node in result.model.graph.node)
     expected = {
@@ -418,7 +431,13 @@ def test_residual_exclusion_survives_boundary_extension(
         default=Exclude(reason="only smooth last consumer"),
         overrides=(Rule(selector=ByName(pattern="consumer"), decision=SmoothQuant()),),
     )
-    model = expect_ok(quantize(residual_model, replay_inputs, (smoothing,))).model
+    model = expect_ok(
+        quantize(
+            residual_model,
+            replay_inputs,
+            Pipeline(TransformStage(smoothing)).then(FinishTransform()),
+        )
+    ).model
     graph = expect_ok(describe(model))
     original = supported(StaticW8A8())
     rules = Rules(
@@ -441,8 +460,11 @@ def test_residual_exclusion_survives_boundary_extension(
 def test_signed_smoothquant_retains_float_scaling(residual_model: ModelProto) -> None:
     """Signed activation stages retain their floating-point scaling paths."""
     stages = (
-        supported(SmoothQuant()),
-        supported(StaticW8A8(activation_type=IntegerType.INT8)),
+        Pipeline(TransformStage(supported(SmoothQuant())))
+        .then(
+            QuantizationStage(supported(StaticW8A8(activation_type=IntegerType.INT8)))
+        )
+        .then(VerifyStage())
     )
     result = expect_ok(quantize(residual_model, replay_inputs, stages))
     assert not any(node.op_type == "QLinearMul" for node in result.model.graph.node)

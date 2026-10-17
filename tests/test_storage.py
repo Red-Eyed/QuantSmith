@@ -10,9 +10,15 @@ from quantsmith.algorithms.smoothquant import SmoothQuant
 from quantsmith.algorithms.static import StaticW8A8
 from quantsmith.backends.onnx import AxisAttribute, lower
 from quantsmith.backends.onnx.pipeline import quantize
+from quantsmith.backends.onnx.stages import (
+    QuantizationStage,
+    TransformStage,
+    VerifyStage,
+)
 from quantsmith.calibration import Samples
 from quantsmith.config import supported
 from quantsmith.domain import Encoding, Granularity, IntegerType, PerChannel, PerTensor
+from quantsmith.pipeline import Pipeline
 from quantsmith.plan import QuantizationPlan, QuantizeConstant, QuantizeInput
 from quantsmith.runtime import OnnxEvaluator
 from tests.conftest import OperatorCase
@@ -113,9 +119,13 @@ def test_pipeline_prunes_replaced_weights(
     operator_case: OperatorCase, samples: Samples, smoothing: bool
 ) -> None:
     """Discard original and intermediate FP32 weights after the last consumer moves."""
-    stages = (supported(StaticW8A8()),)
+    stages = Pipeline(QuantizationStage(supported(StaticW8A8()))).then(VerifyStage())
     if smoothing:
-        stages = (supported(SmoothQuant()), *stages)
+        stages = (
+            Pipeline(TransformStage(supported(SmoothQuant())))
+            .then(QuantizationStage(supported(StaticW8A8())))
+            .then(VerifyStage())
+        )
     result = expect_ok(quantize(operator_case.model, samples, stages))
     used = {name for node in result.model.graph.node for name in node.input}
     for tensor in result.model.graph.initializer:
@@ -134,7 +144,13 @@ def test_initializer_graph_output_is_preserved(
     model.graph.output.append(
         helper.make_tensor_value_info("w", TensorProto.FLOAT, weight.dims)
     )
-    result = expect_ok(quantize(model, samples, (supported(StaticW8A8()),)))
+    result = expect_ok(
+        quantize(
+            model,
+            samples,
+            Pipeline(QuantizationStage(supported(StaticW8A8()))).then(VerifyStage()),
+        )
+    )
     retained = next(t for t in result.model.graph.initializer if t.name == "w")
     assert retained == weight
 

@@ -12,9 +12,14 @@ from quantsmith.algorithms import Algorithm, Needs, Statistics, build_plan
 from quantsmith.algorithms.static import StaticW8A8
 from quantsmith.backends.onnx import describe, load
 from quantsmith.backends.onnx.pipeline import quantize
+from quantsmith.backends.onnx.stages import (
+    QuantizationStage,
+    VerifyStage,
+)
 from quantsmith.calibration import Requirement, Samples, collect, extrema
 from quantsmith.config import supported
 from quantsmith.domain import FloatArray, Graph, InputArray, Node
+from quantsmith.pipeline import Pipeline
 from quantsmith.plan import QuantizationPlan
 from quantsmith.result import (
     Err,
@@ -128,7 +133,14 @@ def test_foreign_checker_error(operator_case: OperatorCase, samples: Samples) ->
     model = deepcopy(operator_case.model)
     model.graph.node[0].input[0] = "nonexistent"
     before = model.SerializeToString()
-    expect_error(quantize(model, samples, (supported(StaticW8A8()),)), "nonexistent")
+    expect_error(
+        quantize(
+            model,
+            samples,
+            Pipeline(QuantizationStage(supported(StaticW8A8()))).then(VerifyStage()),
+        ),
+        "nonexistent",
+    )
     assert model.SerializeToString() == before
 
 
@@ -157,7 +169,14 @@ def test_mask_constants_and_invalid_weights(
     assert not graph.weights["mask"].flags.writeable
     weight = np.full(tuple(model.graph.initializer[0].dims), np.inf, dtype=np.float32)
     model.graph.initializer[0].CopyFrom(numpy_helper.from_array(weight, "w"))
-    expect_error(quantize(model, samples, (supported(StaticW8A8()),)), "finite")
+    expect_error(
+        quantize(
+            model,
+            samples,
+            Pipeline(QuantizationStage(supported(StaticW8A8()))).then(VerifyStage()),
+        ),
+        "finite",
+    )
 
 
 def test_empty_evaluation() -> None:

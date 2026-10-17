@@ -7,7 +7,7 @@ import onnx
 from onnx import ModelProto, NodeProto, TensorProto, numpy_helper
 
 from quantsmith.backends.onnx import Names, admit, normalize, remove_unused_initializers
-from quantsmith.domain import FloatArray
+from quantsmith.domain import Absent, FloatArray
 from quantsmith.result import QuantSmithError, Result
 
 
@@ -21,7 +21,7 @@ def _constant(model: ModelProto, name: str) -> FloatArray | None:
     return None
 
 
-def _parameters(
+def channel_parameters(
     model: ModelProto, producer: NodeProto, scale: FloatArray
 ) -> list[tuple[int, FloatArray]]:
     """Calculate replacements only for exact NCHW output-channel broadcasts."""
@@ -62,7 +62,7 @@ def _parameters(
     return replacements
 
 
-def _optimize(model: ModelProto) -> ModelProto:
+def _optimize(model: ModelProto, scope: frozenset[str] | Absent) -> ModelProto:
     """Fold single-consumer channel divisions without modifying caller storage."""
     result = normalize(model)
     names = Names(result)
@@ -78,6 +78,8 @@ def _optimize(model: ModelProto) -> ModelProto:
     for division in result.graph.node:
         if division.domain or division.op_type != "Div" or len(division.input) != 2:
             continue
+        if isinstance(scope, frozenset) and division.output[0] not in scope:
+            continue
         source = division.input[0]
         producer = producers.get(source)
         if producer is None or producer.domain or len(producer.output) != 1:
@@ -89,7 +91,7 @@ def _optimize(model: ModelProto) -> ModelProto:
             continue
         if producer.op_type == "BatchNormalization" and ranks.get(source) != scale.ndim:
             continue
-        replacements = _parameters(result, producer, scale)
+        replacements = channel_parameters(result, producer, scale)
         if not replacements:
             continue
         for index, value in replacements:
@@ -113,11 +115,16 @@ def _optimize(model: ModelProto) -> ModelProto:
     return onnx.shape_inference.infer_shapes(result, strict_mode=True)
 
 
-def optimize(model: ModelProto) -> Result[ModelProto, QuantSmithError]:
+_ALL_DIVISIONS = Absent(reason="all affine divisions are eligible for inspection")
+
+
+def optimize(
+    model: ModelProto, *, scope: frozenset[str] | Absent = _ALL_DIVISIONS
+) -> Result[ModelProto, QuantSmithError]:
     """Return an owned graph with eligible Conv/BatchNorm divisions folded.
 
     Shared producer outputs, custom operators, and unsupported broadcasts remain
     unchanged. Rewrites preserve real arithmetic, with FP32 rounding differences;
     calibration must use this returned revision rather than prior statistics.
     """
-    return admit("ONNX optimization", lambda: _optimize(model))
+    return admit("ONNX optimization", lambda: _optimize(model, scope))

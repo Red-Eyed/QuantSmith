@@ -76,11 +76,13 @@ Replace `WineMLP` and the Wine loader with your tabular model and features. Fit 
 The QuantSmith boundary in the example is deliberately small:
 
 ```python
-outcome = quantize(
-    fp32,
-    calibration_samples(data),
-    recipes(config)[QuantizationMethod.PERCENTILE],
-    histogram_bins=config.histogram_bins,
+outcome = (
+    Quantizer.from_pipeline(
+        recipes(config).select(QuantizationMethod.PERCENTILE),
+        histogram_bins=config.histogram_bins,
+    )
+    .quantize(fp32)
+    .calibrate(Replay(calibration_samples(data)))
 )
 ```
 

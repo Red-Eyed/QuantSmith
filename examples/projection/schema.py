@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, CliImplicitFlag, SettingsConfigDict
 
 from examples._shared.schema import Coverage, Method, QuantizationMethod
+from quantsmith.pipeline.policies import Outputs, ProducerOutputs
 from quantsmith.runtime import Evaluation
 
 
@@ -27,6 +28,7 @@ class Config(BaseSettings, frozen=True):
     calibration_seed: int = Field(default=11, ge=0)
     evaluation_seed: int = Field(default=19, ge=0)
     histogram_bins: int = Field(default=2048, ge=2)
+    outputs: Outputs = Field(default_factory=ProducerOutputs, discriminator="kind")
     percentile: float = Field(default=99.99, gt=0, le=100, allow_inf_nan=False)
     smoothquant_alpha: float = Field(default=0.5, ge=0, le=1, allow_inf_nan=False)
     quiet: CliImplicitFlag[bool] = Field(default=False)

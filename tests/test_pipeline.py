@@ -12,9 +12,16 @@ from quantsmith.algorithms.smoothquant import SmoothQuant
 from quantsmith.algorithms.static import StaticW8A8
 from quantsmith.backends.onnx import describe, lower
 from quantsmith.backends.onnx.pipeline import quantize
+from quantsmith.backends.onnx.stages import (
+    FinishTransform,
+    QuantizationStage,
+    TransformStage,
+    VerifyStage,
+)
 from quantsmith.calibration import Percentile, Samples
 from quantsmith.config import supported
 from quantsmith.domain import IntegerType, PerChannel
+from quantsmith.pipeline import Pipeline
 from quantsmith.plan import QuantizeInput
 from quantsmith.rules import ByName, Exclude, Rule, Rules
 from quantsmith.runtime import OnnxEvaluator, evaluate
@@ -30,7 +37,13 @@ def test_static_qdq(
     """Verify storage variants, channel axes, valid graphs, and numerical error."""
     before = operator_case.model.SerializeToString()
     algorithm = StaticW8A8(activation_type=dtype, activation_symmetric=symmetric)
-    result = expect_ok(quantize(operator_case.model, samples, (supported(algorithm),)))
+    result = expect_ok(
+        quantize(
+            operator_case.model,
+            samples,
+            Pipeline(QuantizationStage(supported(algorithm))).then(VerifyStage()),
+        )
+    )
     assert operator_case.model.SerializeToString() == before
     onnx.checker.check_model(result.model)
     operations = result.plans[0].operations
@@ -56,7 +69,11 @@ def test_static_qdq(
 def test_smoothquant_equivalence(operator_case: OperatorCase, samples: Samples) -> None:
     """Prove the floating transform preserves outputs before quantization."""
     result = expect_ok(
-        quantize(operator_case.model, samples, (supported(SmoothQuant()),))
+        quantize(
+            operator_case.model,
+            samples,
+            Pipeline(TransformStage(supported(SmoothQuant()))).then(FinishTransform()),
+        )
     )
     report = expect_ok(
         evaluate(
@@ -74,8 +91,13 @@ def test_smoothquant_then_percentile(
 ) -> None:
     """Recalibrate transformed activations before constructing static encodings."""
     stages = (
-        supported(SmoothQuant()),
-        supported(StaticW8A8(calibration=Percentile(percentile=99.9))),
+        Pipeline(TransformStage(supported(SmoothQuant())))
+        .then(
+            QuantizationStage(
+                supported(StaticW8A8(calibration=Percentile(percentile=99.9)))
+            )
+        )
+        .then(VerifyStage())
     )
     result = expect_ok(
         quantize(operator_case.model, samples, stages, histogram_bins=256)
@@ -112,7 +134,9 @@ def test_shared_edges_preserve_excluded_consumer(
             ),
         ),
     )
-    result = expect_ok(quantize(model, samples, (rules,)))
+    result = expect_ok(
+        quantize(model, samples, Pipeline(QuantizationStage(rules)).then(VerifyStage()))
+    )
     untouched = next(
         node for node in result.model.graph.node if node.name == "untouched"
     )

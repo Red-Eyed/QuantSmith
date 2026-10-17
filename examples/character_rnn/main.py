@@ -21,7 +21,8 @@ from torch import nn
 from examples._shared.cli import run_and_report
 from examples._shared.environment import environment
 from examples._shared.plans import coverage, save_plans
-from examples._shared.schema import Coverage, Method, QuantizationMethod
+from examples._shared.recipes import Recipes
+from examples._shared.schema import Coverage, Method
 from examples._shared.training.data import shakespeare
 from examples._shared.training.measurement import Predictor, measure
 from examples._shared.training.reporting import save, save_manifest, variant_reports
@@ -29,13 +30,19 @@ from examples._shared.training.schema import Dataset, Report, TaskKind, TaskRepo
 from examples._shared.training.training import eager, train
 from examples.character_rnn.model import CharacterRNN
 from examples.character_rnn.schema import Config
+from quantsmith import Quantizer, Replay
 from quantsmith.algorithms import Algorithm
 from quantsmith.algorithms.smoothquant import SmoothQuant
 from quantsmith.algorithms.static import StaticW8A8
 from quantsmith.backends.onnx import describe
-from quantsmith.backends.onnx.pipeline import quantize
+from quantsmith.backends.onnx.stages import (
+    QuantizationStage,
+    TransformStage,
+    VerifyStage,
+)
 from quantsmith.calibration import Percentile, Samples
 from quantsmith.domain import FloatArray, Graph, InputArray, Node
+from quantsmith.pipeline import FloatGraph, Pipeline, QuantizationResult, RuntimeScaling
 from quantsmith.result import (
     Err,
     FailureKind,
@@ -143,7 +150,7 @@ class ConstantWeights:
         return True
 
 
-def recipes(config: Config) -> dict[QuantizationMethod, tuple[Rules[Algorithm], ...]]:
+def recipes(config: Config) -> Recipes[Pipeline[FloatGraph, QuantizationResult]]:
     """Define three QuantSmith configurations for independent adaptation."""
     minmax: Rules[Algorithm] = Rules(
         default=Exclude(reason="outside constant-weight operators"),
@@ -169,11 +176,15 @@ def recipes(config: Config) -> dict[QuantizationMethod, tuple[Rules[Algorithm], 
             ),
         ),
     )
-    return {
-        QuantizationMethod.MINMAX: (minmax,),
-        QuantizationMethod.PERCENTILE: (percentile,),
-        QuantizationMethod.SMOOTHQUANT: (smoothing, minmax),
-    }
+    return Recipes(
+        minmax=Pipeline(QuantizationStage(minmax, config.outputs)).then(VerifyStage()),
+        percentile=Pipeline(QuantizationStage(percentile, config.outputs)).then(
+            VerifyStage()
+        ),
+        smoothquant=Pipeline(TransformStage(smoothing, RuntimeScaling()))
+        .then(QuantizationStage(minmax, config.outputs))
+        .then(VerifyStage()),
+    )
 
 
 def calibration_samples(data: Dataset) -> Samples:
@@ -260,11 +271,12 @@ def quantized_variants(
         with progress.console.status(
             f"{recipe.value}: collecting statistics and lowering"
         ):
-            outcome = quantize(
-                fp32,
-                calibration_samples(data),
-                configurations[recipe],
-                histogram_bins=config.histogram_bins,
+            outcome = (
+                Quantizer.from_pipeline(
+                    configurations.select(recipe), histogram_bins=config.histogram_bins
+                )
+                .quantize(fp32)
+                .calibrate(Replay(calibration_samples(data)))
             )
         match outcome:
             case Err() as error:

@@ -18,7 +18,3 @@ class Config(BaseConfig):
         default=(ModelName.MOBILENET_V2,)
     )
     output: Path = Field(default=Path("work_dir/artifacts/mobilenet_v2"))
-    activation_function_aware: bool = Field(
-        default=False,
-        description="Calibrate private Conv outputs after Relu/Clip; changes rounding",
-    )

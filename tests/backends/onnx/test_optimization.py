@@ -131,7 +131,13 @@ def test_pipeline_optimizes_before_recalibration(scaled_model: ModelProto) -> No
     from quantsmith.algorithms.smoothquant import SmoothQuant
     from quantsmith.algorithms.static import StaticW8A8
     from quantsmith.backends.onnx.pipeline import quantize
+    from quantsmith.backends.onnx.stages import (
+        QuantizationStage,
+        TransformStage,
+        VerifyStage,
+    )
     from quantsmith.config import supported
+    from quantsmith.pipeline import Pipeline
     from quantsmith.rules import ByName, Exclude, Rule, Rules
 
     model = deepcopy(scaled_model)
@@ -152,7 +158,15 @@ def test_pipeline_optimizes_before_recalibration(scaled_model: ModelProto) -> No
             "x": np.random.default_rng(12).normal(size=(1, 2, 3, 3)).astype(np.float32)
         }
 
-    result = expect_ok(quantize(model, samples, (smoothing, supported(StaticW8A8()))))
+    result = expect_ok(
+        quantize(
+            model,
+            samples,
+            Pipeline(TransformStage(smoothing))
+            .then(QuantizationStage(supported(StaticW8A8())))
+            .then(VerifyStage()),
+        )
+    )
     assert not any(node.op_type == "Div" for node in result.model.graph.node)
     assert len(result.plans) == 2
     quantized = expect_ok(OnnxEvaluator(result.model).run(next(samples()), ("y",)))
@@ -181,3 +195,10 @@ def test_invalid_model_is_result(scaled_model: ModelProto) -> None:
 
     scaled_model.graph.node[-1].input[0] = "missing"
     expect_error(optimize(scaled_model), "missing")
+
+
+def test_scope_preserves_existing_divisions(scaled_model: ModelProto) -> None:
+    """A smoothing candidate cannot rewrite divisions outside its own output scope."""
+    untouched = expect_ok(optimize(scaled_model, scope=frozenset({"new_smoothing"})))
+    assert any(node.op_type == "Div" for node in untouched.graph.node)
+    assert_equivalent(scaled_model, untouched)

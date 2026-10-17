@@ -26,9 +26,14 @@ from quantsmith.backends.onnx.integer_execution.planning import (
     execution_rules,
 )
 from quantsmith.backends.onnx.pipeline import quantize
+from quantsmith.backends.onnx.stages import (
+    QuantizationStage,
+    VerifyStage,
+)
 from quantsmith.calibration import Percentile, Requirement, Samples
 from quantsmith.config import supported
 from quantsmith.domain import FloatArray
+from quantsmith.pipeline import FunctionOutputs, Pipeline
 from quantsmith.plan import QuantizeOutput
 from quantsmith.rules import Exclude, Rules
 from quantsmith.runtime import OnnxEvaluator, evaluate
@@ -91,8 +96,9 @@ def test_calibrates_function_output_and_fuses(
         quantize(
             activation_model,
             activation_samples,
-            (supported(algorithm),),
-            activation_function_aware=True,
+            Pipeline(QuantizationStage(supported(algorithm), FunctionOutputs())).then(
+                VerifyStage()
+            ),
         )
     )
     assert activation_model.SerializeToString() == before
@@ -203,7 +209,6 @@ def test_non_static_decisions_are_preserved(activation_model: ModelProto) -> Non
             activation_model,
             graph,
             Rules(default=decision),
-            activation_function_aware=True,
         )
         assert rules.resolve(graph.nodes[0], graph) is decision
 
@@ -220,8 +225,9 @@ def test_degenerate_function_output(activation_model: ModelProto, value: float) 
         quantize(
             activation_model,
             replay,
-            (supported(StaticW8A8()),),
-            activation_function_aware=True,
+            Pipeline(
+                QuantizationStage(supported(StaticW8A8()), FunctionOutputs())
+            ).then(VerifyStage()),
         )
     )
     error = expect_ok(

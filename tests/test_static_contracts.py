@@ -25,6 +25,25 @@ class Report(BaseModel):
     ("source", "expected", "line"),
     [
         (
+            "from quantsmith import Quantizer\n"
+            "from quantsmith.config import QuantizationConfig\n"
+            "value = Quantizer.from_config(QuantizationConfig()).calibrate(())\n",
+            "bad-argument-type",
+            3,
+        ),
+        (
+            "from quantsmith.pipeline import Pipeline\n"
+            "from quantsmith.backends.onnx.stages import "
+            "QuantizationStage, TransformStage\n"
+            "from quantsmith.config import supported\n"
+            "from quantsmith.algorithms.static import StaticW8A8\n"
+            "from quantsmith.algorithms.smoothquant import SmoothQuant\n"
+            "value = Pipeline(QuantizationStage(supported(StaticW8A8()))).then(\n"
+            "    TransformStage(supported(SmoothQuant())))\n",
+            "bad-argument-type",
+            7,
+        ),
+        (
             "from quantsmith.domain import PerChannel\nvalue = PerChannel(axis=1)\n",
             "",
             0,

@@ -15,6 +15,7 @@ from examples._shared.schema import (
     Method,
     QuantizationMethod,
 )
+from quantsmith.pipeline.policies import Outputs, ProducerOutputs
 
 
 class ModelName(StrEnum):
@@ -48,6 +49,7 @@ class DemoConfig(BaseSettings, frozen=True):
     seed: int = Field(default=42, ge=0)
     threads: int = Field(default=1, ge=1)
     histogram_bins: int = Field(default=2048, ge=2)
+    outputs: Outputs = Field(default_factory=ProducerOutputs, discriminator="kind")
     percentile: float = Field(default=99.99, gt=0, le=100, allow_inf_nan=False)
     smoothquant_alpha: float = Field(default=0.5, ge=0, le=1, allow_inf_nan=False)
     warmup: int = Field(default=5, ge=1)

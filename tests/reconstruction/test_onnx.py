@@ -11,8 +11,9 @@ from onnx import ModelProto, TensorProto, helper, numpy_helper
 from quantsmith.backends.onnx import lower
 from quantsmith.backends.onnx.reconstruction import reconstruct
 from quantsmith.calibration import Samples
-from quantsmith.config import QuantizationConfig
+from quantsmith.config import QuantizationConfig, SmoothQuantConfig
 from quantsmith.domain import Encoding, FloatArray, PerChannel
+from quantsmith.pipeline import RuntimeScaling
 from quantsmith.plan import QuantizationPlan, QuantizeConstant, QuantizeInput
 from quantsmith.reconstruction import Problem, Reconstructor, Replay, Solution
 from quantsmith.reconstruction.affine import quantize, restore
@@ -180,7 +181,9 @@ def test_smoothing_precedes_reconstruction(
             shared_model,
             shared_samples,
             rules,
-            config=QuantizationConfig(smoothquant=True),
+            config=QuantizationConfig(
+                smoothing=SmoothQuantConfig(folding=RuntimeScaling())
+            ),
         )
     )
     assert len(result.plans) > 2

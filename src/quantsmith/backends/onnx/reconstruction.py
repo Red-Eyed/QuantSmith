@@ -8,11 +8,22 @@ from pydantic import TypeAdapter
 
 from quantsmith.algorithms import Algorithm
 from quantsmith.algorithms.shell import build_plan
+from quantsmith.algorithms.smoothquant import SmoothQuant
 from quantsmith.backends.onnx import admit, describe, lower, normalize
-from quantsmith.backends.onnx.pipeline import PipelineResult, quantize
+from quantsmith.backends.onnx.pipeline import quantize
+from quantsmith.backends.onnx.stages import FinishTransform, TransformStage
 from quantsmith.calibration import Evaluator, Samples
-from quantsmith.config import QuantizationConfig
-from quantsmith.domain import Encoding, FloatArray, Graph, IntArray, Node, PerChannel
+from quantsmith.config import QuantizationConfig, SmoothQuantConfig, supported
+from quantsmith.domain import (
+    Absent,
+    Encoding,
+    FloatArray,
+    Graph,
+    IntArray,
+    Node,
+    PerChannel,
+)
+from quantsmith.pipeline import Pipeline, QuantizationResult
 from quantsmith.plan import QuantizationPlan, QuantizeConstant, QuantizeInput
 from quantsmith.reconstruction import Conv2d, Linear, Problem, Reconstructor, Solution
 from quantsmith.reconstruction.replay import paired_replay
@@ -133,7 +144,7 @@ def initial_plan(
     config: QuantizationConfig,
 ) -> Result[QuantizationPlan, QuantSmithError]:
     """Calibrate only the selected consumer on its current graph revision."""
-    algorithm = config.stages()[-1].resolve(node, graph)
+    algorithm = config.algorithm()
     rules: Rules[Algorithm] = Rules(
         default=Exclude(reason="outside reconstruction unit"),
         overrides=(
@@ -182,7 +193,7 @@ def reconstruct_unit(
     samples: Samples,
     method: Reconstructor,
     config: QuantizationConfig,
-) -> Result[PipelineResult, QuantSmithError]:
+) -> Result[QuantizationResult, QuantSmithError]:
     """Lower one completed unit before any subsequent calibration takes place."""
     proto = next(value for value in model.graph.node if value.name == node.name)
     # String attributes are outside the domain graph's numeric attribute schema.
@@ -211,7 +222,15 @@ def reconstruct_unit(
         case Err() as error:
             return error
         case Ok(candidate):
-            return Ok(PipelineResult(model=candidate, plans=(plan,)))
+            return Ok(
+                QuantizationResult(
+                    model=candidate,
+                    plans=(plan,),
+                    execution=Absent(
+                        reason="reconstruction did not audit integer execution"
+                    ),
+                )
+            )
 
 
 def _reconstruct(
@@ -220,7 +239,7 @@ def _reconstruct(
     rules: Rules[Reconstructor],
     *,
     config: QuantizationConfig = _DEFAULT_CONFIG,
-) -> Result[PipelineResult, QuantSmithError]:
+) -> Result[QuantizationResult, QuantSmithError]:
     """Reconstruct selected operators in graph order, lowering after each unit.
 
     Supply a floating-point graph (optionally already smoothed). Unsupported
@@ -255,7 +274,13 @@ def _reconstruct(
                 plans.extend(result.plans)
     if excluded:
         plans.append(QuantizationPlan(excluded=tuple(excluded)))
-    return Ok(PipelineResult(model=current, plans=tuple(plans)))
+    return Ok(
+        QuantizationResult(
+            model=current,
+            plans=tuple(plans),
+            execution=Absent(reason="reconstruction did not audit integer execution"),
+        )
+    )
 
 
 def reconstruct(
@@ -264,14 +289,14 @@ def reconstruct(
     rules: Rules[Reconstructor],
     *,
     config: QuantizationConfig = _DEFAULT_CONFIG,
-) -> Result[PipelineResult, QuantSmithError]:
+) -> Result[QuantizationResult, QuantSmithError]:
     """Optionally smooth, then reconstruct with fresh per-revision calibration.
 
     The input graph is not mutated. Selected unsupported layouts fail explicitly;
     rules control exclusions. Replay must be deterministic and caller-bounded.
     Each returned plan applies to the preceding plan's lowered graph revision.
     """
-    if not config.smoothquant:
+    if not isinstance(config.smoothing, SmoothQuantConfig):
         return _reconstruct(model, samples, rules, config=config)
     match describe(model):
         case Err() as error:
@@ -290,7 +315,15 @@ def reconstruct(
         ),
     )
     match quantize(
-        model, samples, config.stages()[:1], histogram_bins=config.histogram_bins
+        model,
+        samples,
+        Pipeline(
+            TransformStage(
+                supported(SmoothQuant(alpha=config.smoothing.alpha)),
+                config.smoothing.folding,
+            )
+        ).then(FinishTransform()),
+        histogram_bins=config.histogram_bins,
     ):
         case Err() as error:
             return error
@@ -301,5 +334,10 @@ def reconstruct(
             return error
         case Ok(result):
             return Ok(
-                PipelineResult(model=result.model, plans=smoothed.plans + result.plans)
+                QuantizationResult(
+                    model=result.model,
+                    plans=smoothed.plans + result.plans,
+                    execution=result.execution,
+                    folding=smoothed.folding + result.folding,
+                )
             )

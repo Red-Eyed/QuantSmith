@@ -29,7 +29,7 @@ planning, and lowering for each stage. It invalidates prior statistics by collec
 a fresh set at every graph revision. Built-in static methods receive calibrated
 producer outputs and accumulator-safe INT32 biases through `integer_execution`.
 The final graph is compiled privately for CPU and audited against selected integer
-operations. `PipelineResult.execution` contains the evidence or an explicit
+operations. `QuantizationResult.execution` contains the evidence or an explicit
 `Absent` for pipelines that do not perform this audit, such as reconstruction.
 See [architecture](../../../../docs/architecture.md) and
 [execution restrictions](../../../../docs/integer-execution.md).
@@ -95,6 +95,9 @@ patch's names returns a new index value sharing the same read-only connectivity.
 Only `apply_patches` edits the existing graph, after all planning has completed.
 The pipeline transfers an owned model to this function, preserving caller storage.
 Local construction of new nodes and constants never rewrites indexed protobufs.
-Stage progression similarly returns new `StageState` values and dispatches between
-smoothing and quantization through explicit typed variants. Calibration and ORT
+Stage progression returns typed `FloatGraph` and `QuantizedGraph` revisions.
+`Pipeline.then` composes concrete transitions without inferring stage kinds. Calibration and ORT
 execution remain in the shell, with explicit `Ok`/`Err` handling.
+
+The public fluent facade and fold-only policy are documented in the
+[typed pipeline design](../../../../docs/declarative-pipeline.md).

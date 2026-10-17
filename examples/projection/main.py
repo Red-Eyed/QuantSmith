@@ -11,13 +11,15 @@ from rich.progress import Progress
 
 from examples._shared.cli import run_and_report
 from examples._shared.plans import coverage, save_plans
+from examples._shared.recipes import Recipes
 from examples._shared.schema import QuantizationMethod
 from examples.projection.model import example_model, sample_source
 from examples.projection.reporting import save
 from examples.projection.schema import Config, Report, Variant
+from quantsmith import Quantizer, Replay
 from quantsmith.backends.onnx import describe
-from quantsmith.backends.onnx.pipeline import quantize
-from quantsmith.config import PercentileConfig, QuantizationConfig
+from quantsmith.config import PercentileConfig, QuantizationConfig, SmoothQuantConfig
+from quantsmith.pipeline import RuntimeScaling
 from quantsmith.result import Err, Ok, QuantSmithError, Result
 from quantsmith.runtime import OnnxEvaluator, evaluate
 
@@ -47,17 +49,25 @@ def run(config: Config) -> Result[Report, QuantSmithError]:
     return Ok(report)
 
 
-def recipes(config: Config) -> dict[QuantizationMethod, QuantizationConfig]:
+def recipes(config: Config) -> Recipes[QuantizationConfig]:
     """Expose the minimal QuantSmith configuration for each matrix column."""
-    return {
-        QuantizationMethod.MINMAX: QuantizationConfig(),
-        QuantizationMethod.PERCENTILE: QuantizationConfig(
-            calibration=PercentileConfig(percentile=config.percentile)
+    return Recipes(
+        minmax=QuantizationConfig(
+            histogram_bins=config.histogram_bins, outputs=config.outputs
         ),
-        QuantizationMethod.SMOOTHQUANT: QuantizationConfig(
-            smoothquant=True, smoothquant_alpha=config.smoothquant_alpha
+        percentile=QuantizationConfig(
+            calibration=PercentileConfig(percentile=config.percentile),
+            histogram_bins=config.histogram_bins,
+            outputs=config.outputs,
         ),
-    }
+        smoothquant=QuantizationConfig(
+            smoothing=SmoothQuantConfig(
+                alpha=config.smoothquant_alpha, folding=RuntimeScaling()
+            ),
+            histogram_bins=config.histogram_bins,
+            outputs=config.outputs,
+        ),
+    )
 
 
 def run_variant(
@@ -69,13 +79,12 @@ def run_variant(
     """Quantize from the FP32 source, evaluate held-out batches, and save coverage."""
     method = recipe.variant()
     calibration = sample_source(config.calibration_seed, config.calibration_samples)
-    quantization = recipes(config)[recipe]
+    quantization = recipes(config).select(recipe)
     with progress.console.status(f"{recipe.value}: calibrating and lowering"):
-        outcome = quantize(
-            model,
-            calibration,
-            quantization.stages(),
-            histogram_bins=config.histogram_bins,
+        outcome = (
+            Quantizer.from_config(quantization)
+            .quantize(model)
+            .calibrate(Replay(calibration))
         )
     match outcome:
         case Err() as error:

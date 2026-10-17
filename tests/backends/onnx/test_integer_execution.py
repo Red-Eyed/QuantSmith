@@ -20,9 +20,14 @@ from quantsmith.backends.onnx.integer_execution.planning import (
     execution_rules,
 )
 from quantsmith.backends.onnx.pipeline import quantize
+from quantsmith.backends.onnx.stages import (
+    QuantizationStage,
+    VerifyStage,
+)
 from quantsmith.calibration import Samples
 from quantsmith.config import supported
 from quantsmith.domain import FloatArray, InputArray, IntegerType
+from quantsmith.pipeline import Pipeline
 from quantsmith.plan import QuantizationPlan, QuantizeOutput
 from quantsmith.runtime import OnnxEvaluator, evaluate
 from tests.conftest import OperatorCase
@@ -76,7 +81,11 @@ def test_integer_regions_and_float_boundary(
     """Verify CPU integer Conv/Add execution while unsupported Sigmoid remains valid."""
     before = region_model.SerializeToString()
     result = expect_ok(
-        quantize(region_model, region_samples, (supported(StaticW8A8()),))
+        quantize(
+            region_model,
+            region_samples,
+            Pipeline(QuantizationStage(supported(StaticW8A8()))).then(VerifyStage()),
+        )
     )
     assert region_model.SerializeToString() == before
     assert isinstance(result.execution, ExecutionReport)
@@ -106,7 +115,11 @@ def test_audit_rejects_float_fallback(
 ) -> None:
     """Unrelated integer kernels must never satisfy a planned source's contract."""
     result = expect_ok(
-        quantize(operator_case.model, samples, (supported(StaticW8A8()),))
+        quantize(
+            operator_case.model,
+            samples,
+            Pipeline(QuantizationStage(supported(StaticW8A8()))).then(VerifyStage()),
+        )
     )
     expect_error(
         inspect_execution(operator_case.model, operator_case.model, result.plans),
@@ -131,7 +144,13 @@ def test_dynamic_weight_stays_float(
         for batch in samples():
             yield {**batch, "w": values}
 
-    result = expect_ok(quantize(model, replay, (supported(StaticW8A8()),)))
+    result = expect_ok(
+        quantize(
+            model,
+            replay,
+            Pipeline(QuantizationStage(supported(StaticW8A8()))).then(VerifyStage()),
+        )
+    )
     assert isinstance(result.execution, ExecutionReport)
     assert not result.execution.integer_nodes
     assert "constant weights" in result.execution.unverified_nodes[0].reason
@@ -145,7 +164,11 @@ def test_dynamic_weight_stays_float(
 def test_output_plan_conflicts(operator_case: OperatorCase, samples: Samples) -> None:
     """Output writes conflict with each other, while input/output indices coexist."""
     result = expect_ok(
-        quantize(operator_case.model, samples, (supported(StaticW8A8()),))
+        quantize(
+            operator_case.model,
+            samples,
+            Pipeline(QuantizationStage(supported(StaticW8A8()))).then(VerifyStage()),
+        )
     )
     outputs = tuple(
         operation
@@ -177,7 +200,13 @@ def test_zero_weight_bias_safety(
     rules = execution_rules(model, graph, supported(StaticW8A8()))
     plan = expect_ok(build_plan(graph, OnnxEvaluator(model), region_samples, rules))
     assert plan.operations
-    result = expect_ok(quantize(model, region_samples, (supported(StaticW8A8()),)))
+    result = expect_ok(
+        quantize(
+            model,
+            region_samples,
+            Pipeline(QuantizationStage(supported(StaticW8A8()))).then(VerifyStage()),
+        )
+    )
     assert isinstance(result.execution, ExecutionReport)
     assert len(result.execution.integer_nodes) == 4
     error = expect_ok(
@@ -231,7 +260,13 @@ def test_spatial_and_grouped_convolutions(spatial_rank: int, groups: int) -> Non
             )
         }
 
-    result = expect_ok(quantize(model, replay, (supported(StaticW8A8()),)))
+    result = expect_ok(
+        quantize(
+            model,
+            replay,
+            Pipeline(QuantizationStage(supported(StaticW8A8()))).then(VerifyStage()),
+        )
+    )
     assert isinstance(result.execution, ExecutionReport)
     assert result.execution.integer_nodes[0].executed_operator == "QLinearConv"
     error = expect_ok(
@@ -249,7 +284,9 @@ def test_unsigned_activation_weight_formats(
         quantize(
             operator_case.model,
             samples,
-            (supported(StaticW8A8(weight_type=weight_type)),),
+            Pipeline(
+                QuantizationStage(supported(StaticW8A8(weight_type=weight_type)))
+            ).then(VerifyStage()),
         )
     )
     assert isinstance(result.execution, ExecutionReport)
@@ -262,7 +299,11 @@ def test_audit_does_not_accept_unrelated_kernel(
 ) -> None:
     """A namesake or another source's integer node cannot hide a float fallback."""
     result = expect_ok(
-        quantize(region_model, region_samples, (supported(StaticW8A8()),))
+        quantize(
+            region_model,
+            region_samples,
+            Pipeline(QuantizationStage(supported(StaticW8A8()))).then(VerifyStage()),
+        )
     )
     source = deepcopy(region_model)
     compiled = deepcopy(region_model)
@@ -288,7 +329,13 @@ def test_unnamed_sources_are_audited(
     model = deepcopy(region_model)
     for node in model.graph.node:
         node.name = ""
-    result = expect_ok(quantize(model, region_samples, (supported(StaticW8A8()),)))
+    result = expect_ok(
+        quantize(
+            model,
+            region_samples,
+            Pipeline(QuantizationStage(supported(StaticW8A8()))).then(VerifyStage()),
+        )
+    )
     assert isinstance(result.execution, ExecutionReport)
     assert len(result.execution.integer_nodes) == 4
     assert all(item.node for item in result.execution.integer_nodes)

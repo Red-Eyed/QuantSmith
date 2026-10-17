@@ -63,8 +63,8 @@ from collections.abc import Iterator, Mapping
 import numpy as np
 import onnx
 
-from quantsmith.backends.onnx.pipeline import quantize
-from quantsmith.config import QuantizationConfig
+from quantsmith import Quantizer, Replay
+from quantsmith.config import QuantizationConfig, SmoothQuantConfig
 from quantsmith.domain import InputArray
 from quantsmith.result import Err, Ok
 
@@ -77,8 +77,12 @@ def samples() -> Iterator[Mapping[str, InputArray]]:
         yield {"features": np.asarray(features[index : index + 1], dtype=np.float32)}
 
 
-config = QuantizationConfig(smoothquant=True)
-outcome = quantize(onnx.load("model.onnx"), samples, config.stages())
+config = QuantizationConfig(smoothing=SmoothQuantConfig())
+outcome = (
+    Quantizer.from_config(config)
+    .quantize(onnx.load("model.onnx"))
+    .calibrate(Replay(samples))
+)
 match outcome:
     case Err(error):
         print(error.kind, error.operation, error.detail)
@@ -134,3 +138,6 @@ GPU calibration, packed low-bit export, weight-only
 quantization, and automatic reconstruction blocks are outside the current scope.
 
 Want to extend a method or reproduce a result? See [CONTRIBUTION.md](CONTRIBUTION.md).
+
+See the [typed pipeline design](docs/declarative-pipeline.md) for lifecycle types,
+extension points, policy migration, and fold-only smoothing restrictions.

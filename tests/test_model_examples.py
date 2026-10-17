@@ -31,7 +31,6 @@ from examples.windowed_transformer import main as windowed_example
 from examples.windowed_transformer.model import WindowedCharacterTransformer
 from examples.wine_mlp import main as wine_example
 from examples.wine_mlp.model import WineMLP
-from quantsmith.algorithms import Algorithm
 from quantsmith.backends.onnx import describe
 from quantsmith.backends.onnx.integer_execution.activation_function_ranges import (
     activation_function_outputs,
@@ -42,7 +41,14 @@ from quantsmith.backends.onnx.integer_execution.audit import (
 )
 from quantsmith.backends.onnx.pipeline import quantize
 from quantsmith.domain import Absent, FloatArray, InputArray
-from quantsmith.rules import Rules
+from quantsmith.pipeline import (
+    FloatGraph,
+    FunctionOutputs,
+    Pipeline,
+    ProducerOutputs,
+    QuantizationResult,
+)
+from quantsmith.pipeline.policies import Outputs
 from quantsmith.runtime import OnnxEvaluator
 from tests.outcomes import expect_error, expect_ok
 
@@ -136,38 +142,46 @@ def export_case(
 
 
 def example_stages(
-    kind: ModelKind, method: QuantizationMethod
-) -> tuple[Rules[Algorithm], ...]:
-    """Exercise the configurations written in each example rather than a test recipe."""
+    kind: ModelKind, method: QuantizationMethod, outputs: Outputs
+) -> Pipeline[FloatGraph, QuantizationResult]:
+    """Exercise explicitly declared example programs, including output policy types."""
     match kind:
         case TaskKind.TRANSFORMER:
             return transformer_example.recipes(
-                transformer_example.Config(histogram_bins=64)
-            )[method]
+                transformer_example.Config(histogram_bins=64, outputs=outputs)
+            ).select(method)
         case TaskKind.WINDOWED:
-            return windowed_example.recipes(windowed_example.Config(histogram_bins=64))[
-                method
-            ]
+            return windowed_example.recipes(
+                windowed_example.Config(histogram_bins=64, outputs=outputs)
+            ).select(method)
         case TaskKind.TEXT:
-            return rnn_example.recipes(rnn_example.Config(histogram_bins=64))[method]
+            return rnn_example.recipes(
+                rnn_example.Config(histogram_bins=64, outputs=outputs)
+            ).select(method)
         case TaskKind.WINE:
-            return wine_example.recipes(wine_example.Config(histogram_bins=64))[method]
+            return wine_example.recipes(
+                wine_example.Config(histogram_bins=64, outputs=outputs)
+            ).select(method)
         case ModelName.RESNET18:
-            return resnet_example.recipes(resnet_example.Config(histogram_bins=64))[
-                method
-            ]
+            return resnet_example.recipes(
+                resnet_example.Config(histogram_bins=64, outputs=outputs)
+            ).select(method)
         case ModelName.MOBILENET_V2:
             return mobilenet_example.recipes(
-                mobilenet_example.Config(histogram_bins=64)
-            )[method]
+                mobilenet_example.Config(histogram_bins=64, outputs=outputs)
+            ).select(method)
         case ModelName.EFFICIENTNET_B0:
             return efficientnet_example.recipes(
-                efficientnet_example.Config(histogram_bins=64)
-            )[method]
+                efficientnet_example.Config(histogram_bins=64, outputs=outputs)
+            ).select(method)
         case "projection":
-            return projection_example.recipes(
-                projection_example.Config(histogram_bins=64)
-            )[method].stages()
+            return (
+                projection_example.recipes(
+                    projection_example.Config(histogram_bins=64, outputs=outputs)
+                )
+                .select(method)
+                .pipeline()
+            )
 
 
 @pytest.mark.parametrize("method", list(QuantizationMethod))
@@ -188,9 +202,12 @@ def test_torch_export_quantization_roundtrip(
         quantize(
             export_case.graph,
             source,
-            example_stages(export_case.kind, method),
+            example_stages(
+                export_case.kind,
+                method,
+                FunctionOutputs() if activation_function_aware else ProducerOutputs(),
+            ),
             histogram_bins=64,
-            activation_function_aware=activation_function_aware,
         )
     )
     lowered = result.model
@@ -213,7 +230,7 @@ def test_torch_export_quantization_roundtrip(
             quantize(
                 export_case.graph,
                 source,
-                example_stages(export_case.kind, method),
+                example_stages(export_case.kind, method, ProducerOutputs()),
                 histogram_bins=64,
             )
         )
