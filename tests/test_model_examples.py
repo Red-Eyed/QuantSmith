@@ -33,8 +33,15 @@ from examples.wine_mlp import main as wine_example
 from examples.wine_mlp.model import WineMLP
 from quantsmith.algorithms import Algorithm
 from quantsmith.backends.onnx import describe
+from quantsmith.backends.onnx.integer_execution.activation_function_ranges import (
+    activation_function_outputs,
+)
+from quantsmith.backends.onnx.integer_execution.audit import (
+    ExecutionReport,
+    compile_cpu,
+)
 from quantsmith.backends.onnx.pipeline import quantize
-from quantsmith.domain import FloatArray, InputArray
+from quantsmith.domain import Absent, FloatArray, InputArray
 from quantsmith.rules import Rules
 from quantsmith.runtime import OnnxEvaluator
 from tests.outcomes import expect_error, expect_ok
@@ -95,6 +102,8 @@ def export_case(
         case TaskKind() as task:
             model = builders[task](8).eval()
             inputs = np.asarray([[0, 1, 2, 3, 4, 5, 6, 7]], dtype=np.int64)
+            if task in (TaskKind.TRANSFORMER, TaskKind.WINDOWED):
+                inputs = np.tile(inputs, (1, 2))
         case ModelName.RESNET18:
             model = models.resnet18(weights=None).eval()
             inputs = np.ones((1, 3, 32, 32), dtype=np.float32)
@@ -162,8 +171,11 @@ def example_stages(
 
 
 @pytest.mark.parametrize("method", list(QuantizationMethod))
+@pytest.mark.parametrize("activation_function_aware", [False, True])
 def test_torch_export_quantization_roundtrip(
-    export_case: ExportCase, method: QuantizationMethod
+    export_case: ExportCase,
+    method: QuantizationMethod,
+    activation_function_aware: bool,
 ) -> None:
     """Quantize independent recipes while preserving shape and source ownership."""
     before = export_case.graph.SerializeToString()
@@ -178,6 +190,7 @@ def test_torch_export_quantization_roundtrip(
             source,
             example_stages(export_case.kind, method),
             histogram_bins=64,
+            activation_function_aware=activation_function_aware,
         )
     )
     lowered = result.model
@@ -192,6 +205,58 @@ def test_torch_export_quantization_roundtrip(
     assert np.isfinite(actual).all()
     assert float(np.mean((actual - expected) ** 2)) < 0.1
     assert export_case.graph.SerializeToString() == before
+    if export_case.kind not in (TaskKind.TRANSFORMER, TaskKind.WINDOWED):
+        return
+    assert_transformer_execution(export_case, result.execution, lowered)
+    if activation_function_aware:
+        baseline = expect_ok(
+            quantize(
+                export_case.graph,
+                source,
+                example_stages(export_case.kind, method),
+                histogram_bins=64,
+            )
+        )
+        assert lowered.SerializeToString() == baseline.model.SerializeToString()
+    changed = export_case.inputs.copy()
+    changed[:, 4:] = 0
+    causal = expect_ok(
+        OnnxEvaluator(lowered).run(
+            {export_case.input_name: changed}, (export_case.output_name,)
+        )
+    )[export_case.output_name]
+    np.testing.assert_allclose(actual[:, :4], causal[:, :4], atol=1e-6, rtol=0)
+
+
+def assert_transformer_execution(
+    case: ExportCase, execution: ExecutionReport | Absent, lowered: onnx.ModelProto
+) -> None:
+    """Verify integer learned projections and float dynamic attention/function paths."""
+    assert isinstance(execution, ExecutionReport)
+    graph = expect_ok(describe(case.graph))
+    learned = {
+        node.name
+        for node in graph.nodes
+        if transformer_example.ConstantWeights().matches(node, graph)
+    }
+    dynamic = {
+        node.name
+        for node in graph.nodes
+        if node.op == "MatMul" and node.inputs[1] not in graph.weights
+    }
+    assert len(learned) == 15
+    assert len(dynamic) == 4
+    assert {item.node for item in execution.integer_nodes} == learned
+    assert all(
+        item.executed_operator == "QLinearMatMul" for item in execution.integer_nodes
+    )
+    assert dynamic <= {item.node for item in execution.unverified_nodes}
+    assert not activation_function_outputs(case.graph)
+    compiled = compile_cpu(lowered)
+    operators = [node.op_type for node in compiled.graph.node]
+    assert operators.count("MatMul") + operators.count("FusedMatMul") == len(dynamic)
+    assert operators.count("Softmax") == 2
+    assert operators.count("Sigmoid") + operators.count("QuickGelu") == 2
 
 
 @pytest.mark.parametrize(
