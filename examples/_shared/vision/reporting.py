@@ -125,8 +125,9 @@ Gallery images are the first selected evaluation samples, not chosen by outcome.
 {config.warmup} warmups and {config.benchmark_runs} timed runs.
 ORT optimizations enabled;
 preprocessing, export, and session startup excluded. Adapter validation is included.
-Artifact sizes are measured: QuantSmith retains FP32 weight initializers, so QDQ
-files need not shrink. SmoothQuant is applied only to eligible ungrouped operators.
+Artifact sizes are measured on disk, not runtime RAM. Quantized constant weights
+use integer storage; unquantized tensors remain floating point. SmoothQuant is
+applied only to eligible ungrouped operators.
 Softmax scores in the gallery are not calibrated probabilities.</p>
 <p><a href="results.json">Full JSON results</a> ·
 <a href="summary.md">Markdown summary</a></p>
@@ -185,8 +186,8 @@ def render_markdown(report: SuiteReport) -> str:
             "ORT optimizations enabled; preprocessing/startup excluded. "
             "Timings include adapter validation.",
             "",
-            "QDQ retains FP32 weight initializers; "
-            "neither compression nor speedup is assumed.",
+            "Quantized constant weights use integer storage. MiB measures file size; "
+            "runtime RAM and speedup depend on execution-provider optimizations.",
             "",
             f"Environment: {report.environment.model_dump_json()}",
             "",

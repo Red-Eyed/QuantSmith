@@ -98,8 +98,8 @@ def save(report: Report) -> None:
         "<p>CPU, one thread. Warmed timings exclude training, calibration, "
         "preprocessing, "
         "and session startup; the ORT evaluator disables graph optimization. "
-        "QDQ retains FP32 weights; artifact compression and speedup "
-        "are not guaranteed.</p>"
+        "Quantized constant weights use integer storage. Artifact size does not "
+        "measure runtime RAM; speedup depends on execution-provider optimizations.</p>"
         f'<label>Show method <select id="method">{options}</select></label>'
         + "".join(task_html(task) for task in report.tasks)
         + '<p><a href="results.json">Full configuration and measured results</a></p>'

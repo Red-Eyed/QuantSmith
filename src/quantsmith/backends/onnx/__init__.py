@@ -31,6 +31,7 @@ from quantsmith.plan import (
     QuantizeInput,
     RescaleInput,
 )
+from quantsmith.reconstruction.affine import codes
 from quantsmith.result import FailureKind, QuantSmithError, Result, failure, validate
 
 
@@ -144,12 +145,26 @@ class Names:
 def qdq(
     model: ModelProto, node: NodeProto, operation: QuantizeInput, names: Names
 ) -> list[NodeProto]:
-    """Insert a private QDQ pair for one edge, checking encoding dimensions."""
+    """Store constant edges as integers; insert QDQ for runtime activations."""
     if operation.index >= len(node.input) or not node.input[operation.index]:
         raise ValueError("plan refers to a missing input")
     source = node.input[operation.index]
     encoding = operation.encoding
     validate_encoding(model, source, encoding)
+    constant = next(
+        (tensor for tensor in model.graph.initializer if tensor.name == source), None
+    )
+    if constant is not None:
+        weight = np.asarray(numpy_helper.to_array(constant), dtype=np.float32)
+        if not np.all(np.isfinite(weight)):
+            raise ValueError("quantized constants must be finite")
+        operation_codes = QuantizeConstant(
+            node=operation.node,
+            index=operation.index,
+            values=codes(weight, encoding),
+            encoding=encoding,
+        )
+        return quantized_constant(model, node, operation_codes, names)
     stem = names.new(f"{node.name}_input{operation.index}")
     scale_name, zero_name = (names.new(stem + "_scale"), names.new(stem + "_zero"))
     model.graph.initializer.extend(
@@ -355,8 +370,25 @@ def _lower(model: ModelProto, plan: QuantizationPlan) -> ModelProto:
         rewritten.append(node)
     del result.graph.node[:]
     result.graph.node.extend(rewritten)
+    remove_unused_initializers(result)
     onnx.checker.check_model(result)
     return onnx.shape_inference.infer_shapes(result, strict_mode=True)
+
+
+def remove_unused_initializers(model: ModelProto) -> None:
+    """Discard replaced weights while preserving graph outputs and shared uses.
+
+    Normalization rejects subgraphs, so every use is visible in this flat graph.
+    """
+    used = {name for node in model.graph.node for name in node.input}
+    used.update(value.name for value in model.graph.output)
+    retained = [tensor for tensor in model.graph.initializer if tensor.name in used]
+    removed = {tensor.name for tensor in model.graph.initializer} - used
+    metadata = [value for value in model.graph.value_info if value.name not in removed]
+    del model.graph.initializer[:]
+    model.graph.initializer.extend(retained)
+    del model.graph.value_info[:]
+    model.graph.value_info.extend(metadata)
 
 
 def describe(model: ModelProto) -> Result[Graph, QuantSmithError]:

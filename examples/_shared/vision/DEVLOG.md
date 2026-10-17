@@ -1,5 +1,35 @@
 # Pretrained model experiment log
 
+## 2026-10-17 — Compact integer weight export in QuantSmith 0.8.1
+
+MobileNetV2 SmoothQuant exports grew to 26.73 MiB because lowering retained both
+original and rescaled FP32 weights. Ordinary QDQ exports also retained FP32 weight
+storage. ONNX lowering now stores quantized constants as INT8/UINT8 followed by
+dequantization and removes unused initializers after every stage, preserving shared
+uses and constants exported directly as graph outputs.
+
+The full MobileNetV2 rerun used the same seed 42, 128 calibration and 256 held-out
+images. FP32 is 13.56 MiB; MinMax and Percentile are 3.76 MiB; SmoothQuant is
+3.80 MiB. Top-1 remains 64.06%, 63.28%, 62.50%, and 65.23% respectively. Logit MSE
+is unchanged at the report's displayed precision. Median one-thread optimized CPU
+ORT latency is 4.36 ms FP32, 3.39 ms MinMax, 3.37 ms Percentile, and 6.32 ms
+SmoothQuant. SmoothQuant improves accuracy on this subset but remains slower.
+
+File compression does not establish RAM savings. Separate fresh processes with
+one CPU ORT session, a zero FP32 input of shape `[1, 3, 224, 224]`, and 30 runs
+showed approximately 99 MiB resident memory for FP32 and MinMax, versus 111 MiB
+for SmoothQuant on this arm64 Mac. These process measurements include Python,
+NumPy, runtime setup, and inference, and are not a cross-platform RAM benchmark.
+Inspection of the optimized graphs found 36 `QLinearConv` nodes for MinMax but
+only 17 for SmoothQuant, alongside 36 retained scaling `Div` nodes. Provider
+fusion and activation-buffer improvements require separate work; this change
+fixes serialized storage without claiming lower runtime RAM.
+
+Regression tests compare stored-code dequantization with actual ONNX Runtime QDQ
+for rounding ties, saturation, signed/unsigned zero points, and per-channel axes.
+They also cover source ownership, shared consumers, live initializer outputs,
+reconstructed integer storage, and removal of obsolete SmoothQuant constants.
+
 ## 2026-09-26 — Real CNN exports and held-out measurements
 
 Added explicit TorchVision ImageNet checkpoints for ResNet-18, MobileNetV2, and
