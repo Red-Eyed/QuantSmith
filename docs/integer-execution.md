@@ -147,8 +147,13 @@ unexpected failures to obtain its integer kernel return errors instead of silent
 changing the selection.
 
 Residual boundaries are added for static UINT8 regions even without SmoothQuant.
-They currently use MinMax, including when weight-bearing operations use Percentile;
-this restriction is explicit. Additional rounding is not numerically equivalent
+They default to MinMax to preserve existing graphs. Set
+`boundary_calibration=FollowCalibration()` to follow the main interval method, or
+pass `MinMaxConfig()` / `PercentileConfig(percentile=...)` explicitly. Boundary
+Percentile collects fresh histograms on the current graph revision. Direct typed
+pipelines accept `QuantizationStage(..., boundary_calibration=Percentile(...))`.
+These boundaries remain asymmetric UINT8; changing the interval policy does not
+introduce per-channel activation encoding. Additional rounding is not numerically equivalent
 to previous releases. Unsupported FP32 consumers can receive quantized-and-restored
 values from upstream integer regions.
 

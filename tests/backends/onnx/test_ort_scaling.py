@@ -539,3 +539,47 @@ def test_rewrite_planning_is_pure(
     expected = expect_ok(lower_integer_scaling(model, frozenset({"scaled"})))
     assert model.SerializeToString() == before
     assert applied.SerializeToString() == expected.SerializeToString()
+
+
+@pytest.mark.parametrize("percentile", [99.0, 100.0])
+def test_percentile_residual_boundaries_execute(
+    residual_model: ModelProto, percentile: float
+) -> None:
+    """Verify explicit Percentile boundaries compile with integer residual Add."""
+    from quantsmith.calibration import Percentile
+    from quantsmith.config import (
+        FollowCalibration,
+        PercentileConfig,
+        QuantizationConfig,
+    )
+    from quantsmith.domain import Absent
+    from quantsmith.quantizer import Quantizer, Replay
+
+    config = QuantizationConfig(
+        calibration=PercentileConfig(percentile=percentile),
+        boundary_calibration=FollowCalibration(),
+        histogram_bins=64,
+    )
+    deployed = expect_ok(
+        Quantizer.from_config(config)
+        .quantize(residual_model)
+        .calibrate(Replay(replay_inputs))
+    )
+    assert not isinstance(deployed.execution, Absent)
+    assert any(
+        operation.node == "residual" for operation in deployed.plans[0].operations
+    )
+    explicit = expect_ok(
+        quantize(
+            residual_model,
+            replay_inputs,
+            Pipeline(
+                QuantizationStage(
+                    supported(config.algorithm()),
+                    boundary_calibration=Percentile(percentile=percentile),
+                )
+            ).then(VerifyStage()),
+            histogram_bins=64,
+        )
+    )
+    assert deployed.model.SerializeToString() == explicit.model.SerializeToString()

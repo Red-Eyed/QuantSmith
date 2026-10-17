@@ -9,37 +9,59 @@ from pydantic import BaseModel
 from quantsmith.algorithms.contracts import Algorithm, Needs, Statistics
 from quantsmith.algorithms.encoding import encode
 from quantsmith.algorithms.static import StaticW8A8
-from quantsmith.calibration import Requirement
-from quantsmith.domain import Graph, IntegerType, Node, PerTensor
+from quantsmith.calibration import Calibration, MinMax, MinMaxStats, Requirement
+from quantsmith.domain import Absent, Graph, IntegerType, Node, PerTensor
 from quantsmith.plan import QuantizationPlan, QuantizeInput, QuantizeOutput
-from quantsmith.result import FailureKind, Ok, QuantSmithError, Result, failure
+from quantsmith.result import Err, FailureKind, Ok, QuantSmithError, Result, failure
 from quantsmith.rules import Exclude, Rule, Rules
 
+_MINMAX = MinMax()
 
-class BoundaryQuantizer(BaseModel, frozen=True):
-    """Quantize Div input or both residual Add operands using fresh MinMax ranges."""
+
+class BoundaryQuantizer(BaseModel, frozen=True, arbitrary_types_allowed=True):
+    """Quantize UINT8 region boundaries using an explicit interval policy."""
+
+    calibration: Calibration = MinMax()
 
     def requirements(self, node: Node, graph: Graph) -> Result[Needs, QuantSmithError]:
         """Request bounded per-tensor statistics on this graph revision."""
         tensors = _inputs(node) + (node.outputs if node.op == "Add" else ())
-        return Ok(Needs(ranges=tuple(Requirement(tensor=name) for name in tensors)))
+        requests = tuple(Requirement(tensor=name) for name in tensors)
+        return Ok(
+            Needs(
+                ranges=requests,
+                histograms=requests if self.calibration.needs_histogram else (),
+            )
+        )
 
     def plan(
         self, node: Node, graph: Graph, stats: Statistics
     ) -> Result[QuantizationPlan, QuantSmithError]:
         """Expose every additional rounding boundary in the returned stage plan."""
-        if any(Requirement(tensor=name) not in stats.ranges for name in _inputs(node)):
-            return failure(
-                FailureKind.INVALID_DATA,
-                node.name,
-                "boundary statistics were not collected",
+        tensors = _inputs(node) + (node.outputs if node.op == "Add" else ())
+        intervals: dict[str, MinMaxStats] = {}
+        for name in tensors:
+            request = Requirement(tensor=name)
+            if request not in stats.ranges:
+                return failure(
+                    FailureKind.INVALID_DATA,
+                    node.name,
+                    "boundary statistics were not collected",
+                )
+            histogram = stats.histograms.get(
+                request, Absent(reason="histogram was not collected")
             )
+            match self.calibration.interval(stats.ranges[request], histogram):
+                case Err() as error:
+                    return error
+                case Ok(interval):
+                    intervals[name] = interval
         operations = tuple(
             QuantizeInput(
                 node=node.name,
                 index=index,
                 encoding=encode(
-                    stats.ranges[Requirement(tensor=name)],
+                    intervals[name],
                     IntegerType.UINT8,
                     False,
                     PerTensor(),
@@ -49,18 +71,11 @@ class BoundaryQuantizer(BaseModel, frozen=True):
         )
         if node.op != "Add":
             return Ok(QuantizationPlan(operations=operations))
-        request = Requirement(tensor=node.outputs[0])
-        if request not in stats.ranges:
-            return failure(
-                FailureKind.INVALID_DATA,
-                node.name,
-                "output statistics were not collected",
-            )
         output = QuantizeOutput(
             node=node.name,
             index=0,
             encoding=encode(
-                stats.ranges[request], IntegerType.UINT8, False, PerTensor()
+                intervals[node.outputs[0]], IntegerType.UINT8, False, PerTensor()
             ),
         )
         return Ok(QuantizationPlan(operations=operations + (output,)))
@@ -156,12 +171,16 @@ def _unclaimed(node: Node, graph: Graph, rules: Rules[Algorithm]) -> bool:
 
 
 def with_boundaries(
-    model: ModelProto, graph: Graph, rules: Rules[Algorithm], divisions: frozenset[str]
+    model: ModelProto,
+    graph: Graph,
+    rules: Rules[Algorithm],
+    divisions: frozenset[str],
+    calibration: Calibration = _MINMAX,
 ) -> Rules[Algorithm]:
     """Extend UINT8 residual regions and optional remaining smoothing divisions.
 
     Explicit exclusions and custom algorithms remain authoritative. Boundary
-    ranges use MinMax even when weight-bearing operators use Percentile clipping.
+    ranges follow the supplied calibration policy; MinMax preserves legacy behavior.
     """
     roots = tuple(node for node in graph.nodes if _static_uint8(node, graph, rules))
     float_names = frozenset(
@@ -180,6 +199,6 @@ def with_boundaries(
         return rules
     extension: Rule[Algorithm] = Rule(
         selector=BoundaryNames(frozenset(node.name for node in eligible)),
-        decision=BoundaryQuantizer(),
+        decision=BoundaryQuantizer(calibration=calibration),
     )
     return Rules(default=rules.default, overrides=rules.overrides + (extension,))

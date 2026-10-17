@@ -14,6 +14,7 @@ from quantsmith.backends.onnx.integer_execution.planning import execution_rules
 from quantsmith.backends.onnx.optimization import optimize
 from quantsmith.backends.onnx.ort_scaling import lower_integer_scaling
 from quantsmith.backends.onnx.ort_scaling.boundaries import with_boundaries
+from quantsmith.calibration import Calibration, MinMax
 from quantsmith.domain import Absent
 from quantsmith.pipeline.contracts import CalibrationContext
 from quantsmith.pipeline.policies import (
@@ -132,6 +133,7 @@ class QuantizationStage:
 
     rules: Rules[Algorithm]
     outputs: Outputs = field(default_factory=ProducerOutputs)
+    boundary_calibration: Calibration = field(default_factory=MinMax)
 
     def run(
         self, value: FloatGraph, context: CalibrationContext
@@ -145,7 +147,13 @@ class QuantizationStage:
         configured = execution_rules(
             value.revision.model,
             graph,
-            with_boundaries(value.revision.model, graph, self.rules, value.scaling),
+            with_boundaries(
+                value.revision.model,
+                graph,
+                self.rules,
+                value.scaling,
+                self.boundary_calibration,
+            ),
             activation_function_aware=isinstance(self.outputs, FunctionOutputs),
         )
         match build_plan(

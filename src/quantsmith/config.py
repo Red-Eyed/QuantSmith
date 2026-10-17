@@ -48,6 +48,13 @@ class NoSmoothing(BaseModel):
     kind: Literal["none"] = Field(default="none")
 
 
+class FollowCalibration(BaseModel):
+    """Use the main activation interval policy at inserted UINT8 boundaries."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    kind: Literal["follow"] = Field(default="follow")
+
+
 class SmoothQuantConfig(BaseModel):
     """Declare smoothing and its permitted folding behavior."""
 
@@ -83,6 +90,9 @@ class QuantizationConfig(BaseModel):
         default_factory=NoSmoothing, discriminator="kind"
     )
     outputs: Outputs = Field(default_factory=ProducerOutputs, discriminator="kind")
+    boundary_calibration: FollowCalibration | MinMaxConfig | PercentileConfig = Field(
+        default_factory=MinMaxConfig, discriminator="kind"
+    )
     histogram_bins: int = Field(default=2048, ge=2, strict=True)
     max_channel_histogram_bytes: int = Field(
         default=DEFAULT_CHANNEL_HISTOGRAM_BYTES, ge=1, strict=True
@@ -107,7 +117,18 @@ class QuantizationConfig(BaseModel):
 
     def pipeline(self) -> Pipeline[FloatGraph, QuantizationResult]:
         """Compile typed alternatives to explicit stages without a runtime registry."""
-        quantization = QuantizationStage(supported(self.algorithm()), self.outputs)
+        match self.boundary_calibration:
+            case FollowCalibration():
+                boundary = self.algorithm().calibration
+            case MinMaxConfig():
+                boundary = MinMax()
+            case PercentileConfig(percentile=percentile):
+                boundary = Percentile(percentile=percentile)
+            case _:
+                assert_never(self.boundary_calibration)
+        quantization = QuantizationStage(
+            supported(self.algorithm()), self.outputs, boundary
+        )
         match self.smoothing:
             case NoSmoothing():
                 return Pipeline(quantization).then(VerifyStage())
