@@ -108,14 +108,25 @@ It is compilation evidence, not a latency benchmark or a guarantee for another
 provider, runtime build, session setting or device. Accuracy, ROM and RAM remain
 independent measured outcomes. There are no universal performance acceptance gates.
 
+## Activation-function-aware calibration
+
+The ORT pipeline exposes opt-in `activation_function_aware=True`. Pure eligibility
+and the `ActivationFunctionRanges` decorator are isolated in
+`integer_execution/activation_function_ranges.py`; standalone numerical algorithms
+retain their contracts. The decorator observes private Relu/Clip outputs for
+built-in static Conv output encodings. It preserves revision-separated calibration
+and the compiled integer audit. See the
+[design, Mermaid flow and limitations](integer-execution.md#activation-function-aware-calibration).
+
 ## TBD
 
 - Complete and audit reconstruction pipelines without changing learned codes.
 - Expand capability tests for other providers and model/operator families.
 - Preserve provenance if future ORT versions change source-node naming during
   fusion; currently unrecognized provenance fails closed.
-- Improve activation-aware boundaries, shared encodings and redundant conversion
-  elimination; adding output quantization can reduce accuracy and add overhead.
+- Extend activation-function-aware calibration beyond private Relu/Clip edges,
+  investigate shared encodings and remove further redundant conversions;
+  output quantization can reduce accuracy and add overhead.
 - Separate steady-state runtime memory from startup peak and process overhead.
 - Add graph search only after legal rewrite choices and measurements are reliable.
 

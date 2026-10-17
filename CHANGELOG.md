@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.9.1
+
+### New Features
+
+- Add opt-in `quantize(..., activation_function_aware=True)` for private
+  `Conv → Relu/Clip` edges. Calibrate the Conv output encoding from the activation
+  function output, preserving the chosen MinMax/Percentile policy. Defaults and
+  standalone algorithms remain unchanged. This changes clipping and rounding;
+  reevaluate task accuracy. Shared/public outputs and dynamic Clip bounds are
+  excluded. MobileNetV2 exposes the matching CLI option and saves its configuration.
+
+### Performance
+
+- Reduce MobileNetV2 SmoothQuant latency from 4.22 to 3.20 ms and MinMax from
+  3.76 to 2.78 ms in the local one-thread ORT comparison, keeping all 52 integer
+  convolutions. MinMax Q/DQ counts fall from 36/36 to 2/2 with unchanged ONNX size.
+  On 256 held-out images, top-1 changes from 61.33% to 64.84% for SmoothQuant
+  and 58.59% to 63.67% for MinMax. Percentile loses accuracy despite lower latency;
+  these gains are not universal. See [design and evidence](docs/integer-execution.md#activation-function-aware-calibration).
+
+### Developers
+
+- Add regression tests for eligibility, histogram replay, clipping and degenerate
+  ranges, preserved statistics ownership, disabled behavior, and ORT integer
+  coverage with conversion elimination.
+
 ## 0.9.0
 
 ### Tracked Regressions

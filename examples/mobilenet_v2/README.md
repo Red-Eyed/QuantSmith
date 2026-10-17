@@ -55,6 +55,24 @@ first balances channels, then a fresh calibration pass applies `StaticW8A8()`.
 `--smoothquant-alpha` controls the balancing exponent. Smoothing alone is not the
 INT8 result.
 
+## Activation-function-aware calibration
+
+```sh
+uv run --locked --group examples -m examples.mobilenet_v2.main --activation-function-aware true
+```
+
+This opt-in changes the output encoding of eligible private `Conv → Relu/Clip`
+edges to use statistics observed after the activation function. ORT can then
+eliminate conversion boundaries between integer regions. It applies to all
+selected static recipes, including the MinMax stage after SmoothQuant; smoothing
+still precedes fresh calibration. Shared/public Conv outputs, dynamic Clip bounds,
+and other activation functions retain their existing policy.
+
+Clipping and rounding change, so compare held-out accuracy as well as latency.
+The full example configuration, including this flag, is saved in
+`configuration.json`. Default behavior is unchanged. See
+[the design and measured tradeoffs](../../docs/integer-execution.md#activation-function-aware-calibration).
+
 ## Compare columns
 
 ```sh
@@ -81,6 +99,7 @@ outcome = quantize(
     calibration_samples(calibration, loaded),
     recipes(config)[QuantizationMethod.PERCENTILE],
     histogram_bins=config.histogram_bins,
+    activation_function_aware=config.activation_function_aware,
 )
 ```
 

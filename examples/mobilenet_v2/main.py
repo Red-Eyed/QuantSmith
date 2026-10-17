@@ -58,6 +58,7 @@ def run(config: Config) -> Result[SuiteReport, QuantSmithError]:
     predictions.
     """
     config.output.mkdir(parents=True, exist_ok=True)
+    (config.output / "configuration.json").write_text(config.model_dump_json(indent=2))
     torch.hub.set_dir(str(config.cache / "torch"))
     torch.set_num_threads(config.threads)
     torch.manual_seed(config.seed)
@@ -253,6 +254,7 @@ def quantized_variants(
                 source,
                 configurations[recipe],
                 histogram_bins=config.histogram_bins,
+                activation_function_aware=config.activation_function_aware,
             )
         match outcome:
             case Err() as error:

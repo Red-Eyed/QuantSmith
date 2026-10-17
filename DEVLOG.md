@@ -1,5 +1,21 @@
 # QuantSmith development log
 
+## 2026-10-17 — Activation-function-aware integer output calibration
+
+Add an explicit ORT pipeline opt-in that calibrates private Conv output encodings
+using following Relu/Clip outputs. Isolate eligibility and the algorithm decorator
+from numerical algorithms and lowering. Preserve shared/public outputs, exclusions,
+unsupported functions and custom algorithms. Static calibration still follows
+SmoothQuant lowering on a fresh graph revision. The strategy changes numerics;
+the default remains unchanged. The MobileNetV2 example exposes the option and
+persists its full configuration. Design, Mermaid and restrictions are documented
+in `docs/integer-execution.md`; measured model tradeoffs are recorded in
+`examples/_shared/vision/DEVLOG.md`. Integrated artifacts match the measured
+experimental graphs byte-for-byte; universal latency/accuracy gains remain unproven.
+Fresh integrated profiling and evaluation confirm 2.75 ms / 63.67% MinMax and
+3.20 ms / 64.84% SmoothQuant, versus FP32 4.54 ms / 64.06%. All 556 tests,
+Ruff, formatting and strict Pyrefly checks pass. Version 0.9.1 keeps this optional.
+
 ## 2026-09-29 — Package and repository rename
 
 Version 0.8.0 adopts QuantSmith as the project name and `quantsmith` as the

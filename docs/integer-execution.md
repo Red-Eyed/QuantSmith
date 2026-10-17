@@ -43,6 +43,77 @@ affects every consumer of that value, unlike consumer-local `QuantizeInput`.
 Source tensor names and model input/output types remain unchanged. Example plan
 JSON identifies output records with `target: "output"`.
 
+## Activation-function-aware calibration
+
+Enable `quantize(..., activation_function_aware=True)` to observe a following
+activation function when choosing a built-in static Conv's output encoding.
+It is disabled by default and does not change standalone `StaticW8A8`.
+
+For example, a Conv may produce `[-12, 12]` while its following Clip produces
+`[0, 6]`. A UINT8 MinMax output scale of `6 / 255` with zero point zero describes
+the clipped interval. Applying that encoding before Clip intentionally clips
+negative and large values early. It also lets ORT remove intermediate QDQ when
+adjacent integer encodings align. Percentile still uses its own interval policy
+and histogram replay; it is not replaced with MinMax.
+
+```mermaid
+flowchart TD
+    G[Current graph revision] --> E{Private standard Conv output?}
+    E -->|No| O[Original output observation]
+    E -->|Yes| F{Sole consumer is standard Relu or static-bound Clip?}
+    F -->|No| O
+    F -->|Yes| R[Observe activation function output]
+    R --> C[Fresh extrema and optional histogram replay]
+    C --> P[Plan Conv output QDQ using observed interval]
+    P --> L[Lower without moving the activation function]
+    L --> V[ORT fusion and integer coverage audit]
+```
+
+`activation_function_ranges.py` owns pure eligibility and an algorithm decorator.
+`execution_rules` applies it only to admitted built-in execution quantizers.
+Public or multiply-consumed Conv outputs, custom domains, other functions, and
+Clip bounds supplied at runtime (including overridable initializers) are skipped.
+The post-function tensor can itself be public or shared: it retains its interface.
+Both extrema and histogram requests use the transformed graph revision. SmoothQuant
+therefore still lowers its rescaling before collecting fresh static statistics.
+Caller-owned graphs and statistics are not mutated.
+
+This is a calibration policy that changes clipping and rounding, not an equivalent
+graph rewrite. Fusion and accuracy gains are not guaranteed. On the same 128-image
+calibration / 256-image held-out Imagenette selection, seed 42, one thread,
+ORT 1.30.0 CPUExecutionProvider with ORT_ENABLE_ALL:
+
+| MobileNetV2 | Median ms | Top-1 % | ONNX KiB | Process peak RSS MiB |
+|---|---:|---:|---:|---:|
+| FP32 | 4.46 | 64.06 | 13882.5 | 117.1 |
+| Existing MinMax | 3.76 | 58.59 | 4031.6 | 108.2 |
+| Activation-function-aware MinMax | 2.78 | 63.67 | 4031.6 | 101.8 |
+| Existing SmoothQuant | 4.22 | 61.33 | 4065.5 | 109.1 |
+| Activation-function-aware SmoothQuant | 3.20 | 64.84 | 4065.5 | 102.8 |
+
+All 52 convolutions remain integer. MinMax's compiled QuantizeLinear and
+DequantizeLinear counts each fall from 36 to 2. Separate raw ORT traces show
+conversion work dropping while convolution time stays similar. Timings use
+50 warmups and 300 unprofiled runs; two fresh-process repetitions in opposite
+orders confirm the improvement. Profiling occurs separately (100 runs).
+RSS includes startup, serialization and inference; it is not steady-state tensor
+RAM. Small held-out accuracy differences do not establish population gains.
+
+Percentile improves from 3.80 to 2.78 ms but top-1 drops from 63.67% to 61.72%.
+ResNet18 changes little; EfficientNetB0 has no eligible functions here and is
+unchanged. The integrated MobileNetV2 recipes produce byte-identical graphs to
+these experimental candidates. Local evidence lives under
+`work_dir/artifacts/execution_options/` and
+`work_dir/artifacts/integration_activation_function/`; generated artifacts are
+not shipped. Shared encoding search and integer MatMul with float output remain
+separate, unintegrated experiments.
+
+A fresh profiling and held-out evaluation run of the integrated library gives
+FP32 4.54 ms / 64.06%, MinMax 2.75 ms / 63.67%, Percentile 2.79 ms / 61.72%,
+and SmoothQuant 3.20 ms / 64.84%. Separate profiling sessions retain the same
+integer coverage and conversion reduction. All 556 tests, Ruff and strict
+Pyrefly checks pass, including 26 activation-function-aware regression cases.
+
 ## Bias correctness
 
 The accumulator scale is activation scale multiplied by per-output-channel weight
@@ -161,11 +232,13 @@ three models respectively; extra boundary metadata slightly increases files.
    not a latency acceptance threshold.
 2. **Activation fusion:** output QDQ can interrupt existing specialized
    Conv/Clip/smoothing rewrites. Clip may remain FP32; preserving efficient integer
-   clipping with complete producer boundaries is open work.
+   clipping with complete producer boundaries remains restricted to eligible
+   patterns. Activation-function-aware calibration can restore fusion for private
+   Relu/Clip edges; shared outputs and other activation functions remain open work.
 3. **RAM:** measure initialization peak, steady-state residency and temporary
    buffers separately. Serialized model size is not runtime memory traffic.
-4. **Accuracy:** evaluate larger held-out data and investigate activation-aware
-   output encodings. Keep calibration, tuning and final evaluation data separate.
+4. **Accuracy:** evaluate activation-function-aware output encodings on larger
+   held-out data. Keep calibration, tuning and final evaluation data separate.
 5. **Providers/versions:** verify other devices and runtime builds; benchmark the
    actual deployment session. No GPU/CoreML guarantee is implied.
 6. **Search:** Optuna or a graph optimizer can explore verified transformations

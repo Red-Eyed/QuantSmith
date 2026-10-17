@@ -131,7 +131,11 @@ def _lower_stage(
 
 
 def _advance(
-    state: StageState, rules: Rules[Algorithm], samples: Samples, histogram_bins: int
+    state: StageState,
+    rules: Rules[Algorithm],
+    samples: Samples,
+    histogram_bins: int,
+    activation_function_aware: bool,
 ) -> Result[StageState, QuantSmithError]:
     """Describe, calibrate, plan, and lower one graph revision."""
     match describe(state.model):
@@ -142,6 +146,7 @@ def _advance(
                 state.model,
                 graph,
                 with_boundaries(state.model, graph, rules, state.scaling),
+                activation_function_aware=activation_function_aware,
             )
     match build_plan(
         graph,
@@ -173,6 +178,7 @@ def quantize(
     stages: tuple[Rules[Algorithm], ...],
     *,
     histogram_bins: int = 2048,
+    activation_function_aware: bool = False,
 ) -> Result[PipelineResult, QuantSmithError]:
     """Build and audit an ORT CPU graph with fresh per-revision calibration.
 
@@ -182,6 +188,10 @@ def quantize(
     static layouts retain FP32 computation. Selected admitted static operators must
     compile to integer kernels or return an execution failure. Output rounding and
     accumulator-safe bias preparation can change accuracy. Expected failures use Result.
+
+    Opt-in activation_function_aware observes private Relu/Clip outputs to choose
+    preceding Conv output encodings. This changes clipping and rounding and can
+    let ORT eliminate conversion boundaries; reevaluate task accuracy afterward.
     """
     match admit("ONNX validation", lambda: normalize(model)):
         case Err() as error:
@@ -190,7 +200,9 @@ def quantize(
             source = current
             state = StageState(current)
     for rules in stages:
-        match _advance(state, rules, samples, histogram_bins):
+        match _advance(
+            state, rules, samples, histogram_bins, activation_function_aware
+        ):
             case Err() as error:
                 return error
             case Ok(updated):

@@ -8,6 +8,10 @@ from onnx import ModelProto
 from quantsmith.algorithms.contracts import Algorithm, Needs, Statistics
 from quantsmith.algorithms.encoding import encode
 from quantsmith.algorithms.static import StaticW8A8
+from quantsmith.backends.onnx.integer_execution.activation_function_ranges import (
+    ActivationFunctionRanges,
+    activation_function_outputs,
+)
 from quantsmith.backends.onnx.integer_execution.support import restriction
 from quantsmith.backends.onnx.ort_scaling.boundaries import BoundaryNames
 from quantsmith.calibration import Requirement
@@ -145,16 +149,40 @@ def _adapt(
 
 
 def execution_rules(
-    model: ModelProto, graph: Graph, rules: Rules[Algorithm]
+    model: ModelProto,
+    graph: Graph,
+    rules: Rules[Algorithm],
+    *,
+    activation_function_aware: bool = False,
 ) -> Rules[Algorithm]:
     """Own execution policy in the ORT shell, outside numerical algorithms."""
-    return Rules(
+    configured = Rules[Algorithm](
         default=Exclude(reason="outside the current graph revision"),
         overrides=tuple(
             Rule(
                 selector=BoundaryNames(frozenset({node.name})),
                 decision=_adapt(model, graph, node, rules.resolve(node, graph)),
             )
+            for node in graph.nodes
+        ),
+    )
+    if not activation_function_aware:
+        return configured
+    outputs = activation_function_outputs(model)
+
+    def observe(node: Node) -> Algorithm | Exclude:
+        """Keep custom algorithms and exclusions outside the built-in policy."""
+        decision = configured.resolve(node, graph)
+        match decision:
+            case ExecutionQuantizer() if node.name in outputs:
+                return ActivationFunctionRanges(decision, outputs[node.name])
+            case _:
+                return decision
+
+    return Rules(
+        default=configured.default,
+        overrides=tuple(
+            Rule(selector=BoundaryNames(frozenset({node.name})), decision=observe(node))
             for node in graph.nodes
         ),
     )

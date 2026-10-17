@@ -1,5 +1,35 @@
 # Pretrained model experiment log
 
+## 2026-10-17 — Opt-in activation-function-aware calibration
+
+MobileNetV2's complete integer boundaries introduced avoidable conversion work.
+Observe eligible private Relu/Clip outputs when calibrating preceding Conv output
+encodings, leaving the function and QDQ placement intact. Make this explicit via
+`activation_function_aware=True` and MobileNetV2's matching CLI flag; it changes
+clipping/rounding. Dynamic Clip bounds, shared/public Conv outputs, custom domains
+and other functions retain the original policy. Save the full concrete example
+configuration separately so the opt-in remains visible in generated evidence.
+
+All three integrated recipes reproduce the experimental graphs byte-for-byte.
+The original experiment used 128 calibration / 256 evaluation images, seed 42,
+batch one, one CPU thread, ORT_ENABLE_ALL. SmoothQuant improves 4.22 → 3.20 ms
+and 61.33% → 64.84% top-1; MinMax 3.76 → 2.78 ms and 58.59% → 63.67%.
+FP32 is 4.46 ms and 64.06%. MinMax Q/DQ counts fall from 36/36 to 2/2,
+retaining all 52 integer Conv kernels. ROM is unchanged; process peak RSS drops
+from 108.2 to 101.8 MiB for MinMax. Reverse-order timing repetitions confirm the
+latency change. Percentile becomes faster but loses 1.95 percentage points top-1.
+ResNet changes little; EfficientNet is ineligible and unchanged. The sample is
+too small to claim improved population accuracy. Steady-state RAM is unmeasured.
+
+Regression tests cover extrema/histogram observation, clipped/degenerate outputs,
+eligibility, unchanged disabled behavior, ownership and integer kernel retention.
+Raw traces and optimized graphs are retained under local ignored
+`work_dir/artifacts/execution_options/`; integrated artifacts and equivalence
+records are under `work_dir/artifacts/integration_activation_function/`.
+Fresh integrated profiling and held-out evaluation reproduce the accuracy values
+and measure FP32 4.54 ms, MinMax 2.75 ms, Percentile 2.79 ms and SmoothQuant
+3.20 ms. The full 556-test suite and static checks pass (26 new regression cases).
+
 ## 2026-10-17 — Complete static integer execution and CPU compilation audit
 
 The previous pipeline stored integer weights but MinMax ResNet18 compiled only
