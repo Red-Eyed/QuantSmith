@@ -95,10 +95,16 @@ match outcome:
 Use the exact input names, shapes, and dtypes of your exported graph. The sample
 factory must replay the same inputs on each calibration pass; reserve different
 data for evaluation. `QuantizationConfig()` selects MinMax by default.
-`smoothquant=True` balances channels before collecting fresh quantization
+`smoothing=SmoothQuantConfig()` balances channels before collecting fresh quantization
 statistics. For histogram clipping, use `PercentileConfig`. To choose behavior
 per layer, compose [rules](src/quantsmith/rules/README.md) with `StaticW8A8`,
 `SmoothQuant`, and `Exclude`.
+
+For smaller files with FP32 execution, use
+[`Float16StorageConfig`](docs/float16-storage.md) and `.calibrate([])`.
+It stores eligible constants as FP16 and relies on ORT graph optimization to
+restore them once at initialization. Runtime RAM can increase; evaluate accuracy
+after FP16 rounding.
 
 ## What you can inspect and change
 

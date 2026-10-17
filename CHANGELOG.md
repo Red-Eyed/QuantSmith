@@ -1,5 +1,62 @@
 # Changelog
 
+## 0.10.0
+
+### Highlights
+
+- Add the typed `Quantizer.from_config(config).quantize(model).calibrate(samples)`
+  interface and explicit, composable ORT pipelines.
+- Add `Float16StorageConfig` for smaller serialized weights with FP32 execution
+  and no calibration. ORT optimization folds restoration casts at initialization.
+
+### Tracked Regressions
+
+- Static W8A8 Transformer projections can remain slower than FP32 even when ORT
+  executes integer kernels. Removing explicit dequantization does not guarantee
+  lower latency. Retain a measured FP32 or mixed-precision control.
+- FP16 storage rounds weights and expands them to FP32 at initialization. It does
+  not guarantee lower RAM or unchanged task accuracy; startup cost is unmeasured.
+
+### Backwards Incompatible Changes
+
+- Replace `QuantizationConfig.stages()` with `pipeline()` and `PipelineResult`
+  with `QuantizationResult`. Prefer the new fluent facade; custom stages implement
+  typed graph transitions. See [migration](docs/declarative-pipeline.md#typed-policies-and-migration).
+- Replace `smoothquant=True` and `smoothquant_alpha=x` with
+  `smoothing=SmoothQuantConfig(alpha=x)`, and `activation_function_aware=True` with
+  `outputs=FunctionOutputs()`. SmoothQuant defaults to `FoldOnly()`; explicitly
+  select `RuntimeScaling()` to retain runtime scale operations.
+- Require replayable calibration iterables. Wrap generator factories in
+  `Replay(factory)`; one-shot iterators return a structured error.
+- Extend plan operations with `FloatOutput`. Custom exhaustive consumers must
+  handle it. Floating-output integer MatMul changes output rounding; recalibrate
+  and reevaluate task accuracy when enabling it.
+
+### New Features
+
+- Add joint fold-only SmoothQuant, histogram-informed channel selection with a
+  bounded workspace, and optional smoothing selection by executed quantized
+  output error. Selection error is not a task-accuracy guarantee.
+- Add explicit boundary-calibration policies and `FloatMatMulOutputs()` for
+  supported static integer MatMul/Gemm paths with floating outputs and ORT audit.
+- Add a MobileNetV4 + Stackformers image-captioning walkthrough with disjoint
+  calibration/evaluation, caption metrics, fresh-process latency/RSS measurements,
+  and raw ORT profiling traces. The bounded training run is experimental.
+
+### Performance
+
+- Reuse identical activation quantizers without changing their tested outputs.
+- Reduce captioning ONNX storage from 31.041 to 16.287 MiB with FP16 constants
+  restored to FP32. All 32 evaluated captions match the baseline and no warmed
+  latency regression is observed; peak process RSS rises by about 5.7 MiB.
+  See [measurement limits](docs/float16-storage.md).
+
+### Documentation
+
+- Document typed extension contracts, folding, histogram budgets, smoothing
+  selection, integer execution restrictions, and compact storage with Mermaid
+  architecture diagrams and measured limitations.
+
 ## 0.9.1
 
 ### New Features
