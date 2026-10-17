@@ -39,6 +39,7 @@ the commands to run it.
 | Research question | Example |
 | --- | --- |
 | How do methods behave on global or local causal attention? | [Transformer](examples/transformer/README.md) · [Windowed Transformer](examples/windowed_transformer/README.md) |
+| How do integer CNN and Transformer projections affect complete image captioning? | [MobileNetV4 + Stackformers captioner](examples/mobile_captioning/README.md) |
 | How do activation outliers affect image classification? | [ResNet-18](examples/resnet18/README.md) · [MobileNetV2](examples/mobilenet_v2/README.md) · [EfficientNet-B0](examples/efficientnet_b0/README.md) |
 | What is the smallest complete API example? | [ONNX projection](examples/projection/README.md) |
 | How do the methods apply beyond those models? | [Wine MLP](examples/wine_mlp/README.md) · [Character RNN](examples/character_rnn/README.md) |
