@@ -93,3 +93,62 @@ The result contains `model` and inspectable `plans`, or a typed `Err` diagnostic
 Imagenette train images calibrate; val images evaluate. The default is 128/256
 images. Labels stay in the checkpoint's full 1,000-class ImageNet space. Timings
 use warmed optimized CPU ORT; QDQ does not itself promise faster inference.
+
+## Inspect runtime overhead
+
+The profiling command accepts a saved finite FP32 `.npy` input matching `images`.
+For example, save the existing example's preprocessed calibration input:
+
+```sh
+uv run --locked --group examples - <<'PY'
+from pathlib import Path
+
+import numpy as np
+from PIL import Image
+from torchvision.models import MobileNet_V2_Weights
+
+root = Path("work_dir/artifacts/cache/imagenette/imagenette2-160/train")
+image_path = next(root.rglob("*.JPEG"))
+with Image.open(image_path) as image:
+    tensor = MobileNet_V2_Weights.IMAGENET1K_V2.transforms()(image.convert("RGB"))
+np.save("work_dir/profile_input.npy", tensor.numpy()[None, ...])
+PY
+uv run --locked --group examples -m examples._shared.vision.profile_runtime \
+  --model work_dir/artifacts/mobilenet_v2/int8_smoothquant.onnx \
+  --input work_dir/profile_input.npy \
+  --output work_dir/artifacts/mobilenet_v2/profile --runs 300
+```
+
+The example run above provisions the model and dataset automatically. Repeat the
+profiling invocation sequentially for each model, choosing a separate output
+directory; each invocation starts a fresh process. `--quiet` suppresses progress.
+The command always prints JSON and saves `report.json`, `optimized.onnx`, and an
+ORT trace. Latency is measured with profiling disabled; operator totals come from
+a separate profiling session and are summed microseconds across all `--runs`.
+RSS values are whole-process cumulative high-water marks at three checkpoints,
+not current RSS, isolated tensor allocations, or proof of steady-state RAM savings.
+The optimized graph can contain hardware-specific operators and is diagnostic,
+not a portable deployment artifact.
+
+## Opt into ORT integer SmoothQuant execution
+
+```sh
+uv run --locked --group examples -m examples.mobilenet_v2.main \
+  --methods smoothquant --ort-integer-scaling \
+  --output work_dir/artifacts/mobilenet_v2_ort
+```
+
+This opt-in mode targets ONNX Runtime CPU execution. It adds calibrated UINT8
+boundaries around smoothing and residual additions, folds eligible channel scales
+into convolution output encodings, applies integer clipping, and replaces remaining
+supported divisions with ORT integer multiplication. It keeps smoothing on all
+originally selected layers, but changes rounding and quantizes reciprocal
+coefficients. Portable SmoothQuant remains the default; other methods ignore this
+flag. JSON, HTML, and Markdown reports explicitly identify the enabled mode.
+
+On the recorded arm64 Mac experiment with 128 calibration and 256 held-out images,
+three alternating 500-run measurements gave about 3.40 ms for this mode versus
+3.36 ms for MinMax and 6.42 ms for original SmoothQuant. Top-1 was 166/256 correct,
+versus 162/256 for MinMax and 167/256 for original SmoothQuant. These results do not
+establish accuracy equivalence or universal speedups. Process peak RSS remained
+slightly above MinMax. See the [experiment log](../_shared/vision/DEVLOG.md).

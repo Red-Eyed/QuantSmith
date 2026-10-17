@@ -144,19 +144,21 @@ def save_plans(path: Path, plans: tuple[QuantizationPlan, ...]) -> None:
 
 def coverage(graph: Graph, plans: tuple[QuantizationPlan, ...]) -> Coverage:
     """Summarize constant-weight scope and the actual operations in saved plans."""
-    eligible = sum(
-        node.op in ("Conv", "MatMul", "Gemm")
+    eligible = {
+        node.name
+        for node in graph.nodes
+        if node.op in ("Conv", "MatMul", "Gemm")
         and len(node.inputs) >= 2
         and node.inputs[1] in graph.weights
-        for node in graph.nodes
-    )
+    }
     quantized: list[str] = []
     transformed: list[str] = []
     for plan in plans:
         for operation in plan.operations:
             match operation:
                 case QuantizeInput(node=name, index=0):
-                    quantized.append(name)
+                    if name in eligible:
+                        quantized.append(name)
                 case RescaleInput(node=name):
                     transformed.append(name)
                 case QuantizeInput() | QuantizeConstant():
@@ -164,7 +166,7 @@ def coverage(graph: Graph, plans: tuple[QuantizationPlan, ...]) -> Coverage:
                 case _:
                     assert_never(operation)
     return Coverage(
-        eligible_nodes=eligible,
+        eligible_nodes=len(eligible),
         quantized_nodes=tuple(quantized),
         transformed_nodes=tuple(transformed),
         excluded_nodes=plans[-1].excluded if plans else (),

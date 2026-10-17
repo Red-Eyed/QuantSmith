@@ -115,6 +115,7 @@ class ModelReport(BaseModel):
     weights: str = Field()
     preprocessing: str = Field()
     export_max_abs_error: float = Field(ge=0)
+    ort_integer_scaling: bool = Field(default=False)
     variants: tuple[VariantReport, ...] = Field()
     gallery: tuple[GalleryItem, ...] = Field()
 

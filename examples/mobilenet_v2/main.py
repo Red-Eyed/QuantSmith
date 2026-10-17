@@ -104,6 +104,8 @@ def run(config: Config) -> Result[SuiteReport, QuantSmithError]:
         weights=loaded.weights,
         preprocessing=repr(loaded.transform),
         export_max_abs_error=export_error,
+        ort_integer_scaling=config.ort_integer_scaling
+        and QuantizationMethod.SMOOTHQUANT in config.methods,
         variants=variants,
         gallery=gallery,
     )
@@ -253,6 +255,8 @@ def quantized_variants(
                 source,
                 configurations[recipe],
                 histogram_bins=config.histogram_bins,
+                ort_integer_scaling=config.ort_integer_scaling
+                and recipe == QuantizationMethod.SMOOTHQUANT,
             )
         match outcome:
             case Err() as error:

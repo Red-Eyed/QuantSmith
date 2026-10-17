@@ -1,5 +1,73 @@
 # Pretrained model experiment log
 
+## 2026-10-17 — SmoothQuant runtime fusion experiments
+
+The direct-producer folding draft removes two MobileNetV2 divisions, recovering
+19 QLinearConv nodes rather than 17. A complete rerun with seed 42, 128 calibration
+images, and 256 held-out images gives 65.63% top-1 and 6.18 ms median latency.
+This does not meet the MinMax latency target.
+
+Fresh sequential CPU profiles using ORT 1.30.0, one thread, ten warmup runs, and
+300 timed runs reproduce 4.44 ms FP32, 3.41 ms MinMax, and 6.42 ms original
+SmoothQuant. A separate profiled session attributes about 0.32 ms per inference
+to Div, so division cost alone cannot explain the slowdown. Ordinary MinMax has
+36 QLinearConv nodes; original SmoothQuant has 17 and more floating convolutions.
+
+Experimental artifacts are under `work_dir/smoothquant_optimization/`; these are
+not integrated into the supported pipeline. All variants use the same 128 real
+calibration images. Observed ablations:
+
+| Variant | Median latency | Top-1 on 256 held-out images |
+| --- | ---: | ---: |
+| Extra QDQ boundaries before scaling | 4.19 ms | 65.63% |
+| Quantized ORT multiplication at scaling boundaries | 3.75 ms | 65.23% |
+| Foldable-only selective smoothing | 3.34 ms | 62.89% |
+| Integer clipping plus quantized scaling | 3.55 ms | 65.23% |
+| Integer clipping/scaling plus residual-add boundaries | 3.39 ms | 64.84% |
+
+The final experimental graph preserves smoothing on all originally selected
+layers. It absorbs channel scaling into eligible Conv weight encodings and biases,
+replaces ReLU6 bounds with broadcast integer Min, and handles remaining scales with
+`com.microsoft::QLinearMul`. Additional calibrated QDQ boundaries on residual Add
+inputs recover 46 QLinearConv and five QLinearAdd nodes. This is an ORT-specific
+quantization mode with changed rounding, not a numerically equivalent rewrite of
+the original INT8 graph. Reciprocal coefficients also undergo UINT8 quantization.
+No equivalent transformation is claimed for arbitrary operators or shared paths.
+
+Three alternating, sequential fresh-process comparisons, each with 500 timed
+runs on the same seeded synthetic FP32 input `[1, 3, 224, 224]`, give MinMax medians
+3.356/3.353/3.362 ms and experimental medians 3.391/3.428/3.403 ms. Median-of-medians
+is 3.356 versus 3.403 ms, approximately 1.4% slower for the experiment. Whole-process
+inference RSS high-water marks are 117.3–117.6 MiB versus 118.6–118.7 MiB; this does
+not demonstrate RAM savings. Serialized experimental size is 3,931,077 bytes,
+compared with 3,941,012 bytes for MinMax and 3,988,864 for original SmoothQuant.
+
+A final evaluation through deployment-style ORT sessions with optimizations enabled
+confirms 162/256 correct for MinMax, 167/256 for original SmoothQuant, and 166/256
+for the experiment. The experiment loses one correct prediction relative to
+original SmoothQuant and remains four above MinMax. This small subset does not
+establish population-level accuracy equivalence. The approved mode is now integrated behind
+`pipeline.quantize(..., ort_integer_scaling=True)` and MobileNetV2's
+`--ort-integer-scaling`. Portable ONNX remains the default. The integrated full
+128/256-image rerun reproduces 64.84% top-1 and 3.40 ms median latency. Its serialized
+size is 3,934,455 bytes; longer deterministic generated names account for the small
+increase over the prototype. Runtime guards preserve shared values and exposed
+outputs, skip signed activation encodings, and retain unsupported coefficients or
+layouts. Plans include the additional calibrated rounding boundaries; graph
+initializers contain the final rewritten encodings. Reports explicitly record
+the mode, and coverage counts only eligible constant-weight operators.
+
+Dedicated tests cover all UINT8 codes, negative real values, saturation, integer
+clipping against the scaled floating-point reference, malformed graphs, shared
+storage, explicit exclusions, pipeline calibration, and disabled/signed fallbacks.
+`just check` passes Ruff, strict Pyrefly, and all 482 tests. The final combined
+MinMax/SmoothQuant invocation saved its explicitly labeled report under
+`work_dir/artifacts/mobilenet_v2_ort_verified/`: 3.360 ms MinMax versus 3.405 ms ORT
+SmoothQuant, 162/256 versus 166/256 correct, and 53/53 eligible operators in both
+coverage summaries. A separate fresh-process profile of the final graph confirms
+46 QLinearConv nodes, five QLinearAdd nodes, and 118.77 MiB process inference RSS
+high-water mark. No general accuracy or RAM guarantee is made.
+
 ## 2026-10-17 — Compact integer weight export in QuantSmith 0.8.1
 
 MobileNetV2 SmoothQuant exports grew to 26.73 MiB because lowering retained both
