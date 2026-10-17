@@ -29,6 +29,7 @@ from quantsmith.plan import (
     QuantizationPlan,
     QuantizeConstant,
     QuantizeInput,
+    QuantizeOutput,
     RescaleInput,
 )
 from quantsmith.reconstruction.affine import codes
@@ -345,6 +346,8 @@ def rescale(
 
 def _lower(model: ModelProto, plan: QuantizationPlan) -> ModelProto:
     """Apply a plan to a copy and check the resulting ordinary ONNX graph."""
+    from quantsmith.backends.onnx.integer_execution.lowering import bias_qdq, output_qdq
+
     result = normalize(model)
     names = Names(result)
     known = {node.name for node in result.graph.node}
@@ -357,8 +360,12 @@ def _lower(model: ModelProto, plan: QuantizationPlan) -> ModelProto:
         operations[operation.node].append(operation)
     rewritten: list[NodeProto] = []
     for node in result.graph.node:
+        rewritten.extend(bias_qdq(result, node, operations[node.name], names.new))
+        following: list[NodeProto] = []
         for operation in operations[node.name]:
             match operation:
+                case QuantizeOutput():
+                    following.extend(output_qdq(result, node, operation, names.new))
                 case QuantizeInput():
                     rewritten.extend(qdq(result, node, operation, names))
                 case QuantizeConstant():
@@ -368,6 +375,7 @@ def _lower(model: ModelProto, plan: QuantizationPlan) -> ModelProto:
                 case _:
                     assert_never(operation)
         rewritten.append(node)
+        rewritten.extend(following)
     del result.graph.node[:]
     result.graph.node.extend(rewritten)
     remove_unused_initializers(result)

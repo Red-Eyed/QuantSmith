@@ -11,7 +11,7 @@ from quantsmith.algorithms.encoding import encode
 from quantsmith.algorithms.static import StaticW8A8
 from quantsmith.calibration import Requirement
 from quantsmith.domain import Graph, IntegerType, Node, PerTensor
-from quantsmith.plan import QuantizationPlan, QuantizeInput
+from quantsmith.plan import QuantizationPlan, QuantizeInput, QuantizeOutput
 from quantsmith.result import FailureKind, Ok, QuantSmithError, Result, failure
 from quantsmith.rules import Exclude, Rule, Rules
 
@@ -21,9 +21,8 @@ class BoundaryQuantizer(BaseModel, frozen=True):
 
     def requirements(self, node: Node, graph: Graph) -> Result[Needs, QuantSmithError]:
         """Request bounded per-tensor statistics on this graph revision."""
-        return Ok(
-            Needs(ranges=tuple(Requirement(tensor=name) for name in _inputs(node)))
-        )
+        tensors = _inputs(node) + (node.outputs if node.op == "Add" else ())
+        return Ok(Needs(ranges=tuple(Requirement(tensor=name) for name in tensors)))
 
     def plan(
         self, node: Node, graph: Graph, stats: Statistics
@@ -48,7 +47,23 @@ class BoundaryQuantizer(BaseModel, frozen=True):
             )
             for index, name in enumerate(_inputs(node))
         )
-        return Ok(QuantizationPlan(operations=operations))
+        if node.op != "Add":
+            return Ok(QuantizationPlan(operations=operations))
+        request = Requirement(tensor=node.outputs[0])
+        if request not in stats.ranges:
+            return failure(
+                FailureKind.INVALID_DATA,
+                node.name,
+                "output statistics were not collected",
+            )
+        output = QuantizeOutput(
+            node=node.name,
+            index=0,
+            encoding=encode(
+                stats.ranges[request], IntegerType.UINT8, False, PerTensor()
+            ),
+        )
+        return Ok(QuantizationPlan(operations=operations + (output,)))
 
 
 @dataclass(frozen=True)
@@ -143,13 +158,11 @@ def _unclaimed(node: Node, graph: Graph, rules: Rules[Algorithm]) -> bool:
 def with_boundaries(
     model: ModelProto, graph: Graph, rules: Rules[Algorithm], divisions: frozenset[str]
 ) -> Rules[Algorithm]:
-    """Return rules extended with calibrated UINT8 boundaries in smoothed regions.
+    """Extend UINT8 residual regions and optional remaining smoothing divisions.
 
     Explicit exclusions and custom algorithms remain authoritative. Boundary
     ranges use MinMax even when weight-bearing operators use Percentile clipping.
     """
-    if not divisions:
-        return rules
     roots = tuple(node for node in graph.nodes if _static_uint8(node, graph, rules))
     float_names = frozenset(
         value.name
@@ -163,7 +176,7 @@ def with_boundaries(
         and _unclaimed(node, graph, rules)
         and all(name in float_names for name in _inputs(node))
     )
-    if not any(node.op == "Div" for node in eligible):
+    if not eligible:
         return rules
     extension: Rule[Algorithm] = Rule(
         selector=BoundaryNames(frozenset(node.name for node in eligible)),

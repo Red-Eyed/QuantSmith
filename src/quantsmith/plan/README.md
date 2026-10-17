@@ -5,6 +5,12 @@ A `QuantizationPlan` is an inspectable set of decisions before backend mutation.
 activation/weight transformation. These are closed alternatives so new operation
 kinds expose incomplete lowering consumers to static checking.
 
+`QuantizeOutput` owns a producer's output encoding. It adds rounding for every
+consumer of that value and preserves the public FP32 tensor name after
+dequantization. Input and output conflict keys are separate; duplicate output
+writes and transform/output combinations are rejected. Saved example JSON marks
+output records with `target: "output"`.
+
 `QuantizeConstant` owns reconstructed integer codes and an encoding for one
 constant consumer edge. It lowers to an integer initializer plus dequantization,
 preserving exact learned rounding and other consumers of the original weights.

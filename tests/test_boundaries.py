@@ -4,7 +4,7 @@ from copy import deepcopy
 
 import numpy as np
 import pytest
-from onnx import helper, numpy_helper
+from onnx import TensorProto, helper, numpy_helper
 from pydantic import ValidationError
 
 from quantsmith.algorithms import Algorithm
@@ -131,7 +131,7 @@ def test_duplicate_node_names(operator_case: OperatorCase) -> None:
 
 
 def test_static_with_bias(operator_case: OperatorCase, samples: Samples) -> None:
-    """Leave bias values untouched while quantizing the two multiplicative inputs."""
+    """Prepare INT32 accumulator biases without mutating the original constant."""
     model = deepcopy(operator_case.model)
     if model.graph.node[0].op_type == "MatMul":
         return
@@ -142,7 +142,14 @@ def test_static_with_bias(operator_case: OperatorCase, samples: Samples) -> None
     projection = next(
         node for node in result.model.graph.node if node.name == "projection"
     )
-    assert projection.input[2] == "bias"
+    assert projection.input[2] != "bias"
+    np.testing.assert_array_equal(
+        numpy_helper.to_array(model.graph.initializer[-1]), bias
+    )
+    assert any(
+        tensor.data_type == TensorProto.INT32
+        for tensor in result.model.graph.initializer
+    )
     report = expect_ok(
         evaluate(OnnxEvaluator(model), OnnxEvaluator(result.model), samples, ("y",))
     )

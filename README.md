@@ -4,7 +4,7 @@
 
 QuantSmith turns an FP32 ONNX model and representative inputs into a W8A8 QDQ graph.
 It also returns the plans behind that graph: which consumer edges were quantized,
-which layers were excluded, and which scales, zero points, or channel transforms
+which producer outputs were quantized, which layers were excluded, and which scales, zero points, or channel transforms
 were chosen. Use those decisions to investigate an accuracy drop, change one
 choice, and measure again on held-out data.
 
@@ -104,6 +104,7 @@ per layer, compose [rules](src/quantsmith/rules/README.md) with `StaticW8A8`,
 | Weight reconstruction | [GPTQv2 and QDrop](src/quantsmith/reconstruction/README.md) |
 | Replaying inputs and collecting bounded statistics | [Calibration](src/quantsmith/calibration/README.md) |
 | ONNX graph validation and QDQ lowering | [ONNX backend](src/quantsmith/backends/onnx/README.md) |
+| Component boundaries, execution contract, restrictions and open work | [Architecture](docs/architecture.md) · [Integer execution](docs/integer-execution.md) |
 
 Plans expose the chosen encodings and exclusions; examples save graphs, plans,
 reports, and held-out predictions or output errors under `work_dir/artifacts/`.
@@ -119,11 +120,17 @@ per-output-channel weights, and CPU ONNX Runtime calibration. SmoothQuant covers
 ungrouped Conv and matrix projections. Reconstruction has its own
 [operator-specific limits](src/quantsmith/reconstruction/README.md).
 
-QDQ insertion does not by itself establish lower latency or smaller files.
-Static quantization retains floating-point weight initializers; reconstruction
-also retains unused originals. Biases and terminal outputs remain floating
-point. Measure accuracy, latency, and artifact size on your own workload before
-drawing conclusions. GPU calibration, packed low-bit export, weight-only
+The static ORT pipeline completes input/output quantization boundaries and INT32
+biases, then verifies selected supported operators compile to CPU integer kernels.
+Unsupported layouts remain FP32 with reasons in `result.execution`; unexpected
+floating fallbacks fail explicitly. Constants use compact integer storage and
+unused originals are pruned. Public outputs remain FP32 after dequantization.
+The low-level lowering and reconstruction APIs have separate, narrower contracts.
+
+Integer execution does not establish lower latency or RAM. Output quantization
+also changes rounding and can reduce accuracy. Measure the final graph on your
+workload; see [observations and restrictions](docs/integer-execution.md).
+GPU calibration, packed low-bit export, weight-only
 quantization, and automatic reconstruction blocks are outside the current scope.
 
 Want to extend a method or reproduce a result? See [CONTRIBUTION.md](CONTRIBUTION.md).

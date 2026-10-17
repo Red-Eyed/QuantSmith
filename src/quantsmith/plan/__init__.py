@@ -50,7 +50,18 @@ class RescaleInput(BaseModel):
         return scale
 
 
-type Operation = QuantizeInput | QuantizeConstant | RescaleInput
+class QuantizeOutput(BaseModel):
+    """Quantize a producer output, preserving its public floating tensor name."""
+
+    model_config = ConfigDict(
+        frozen=True, strict=True, extra="forbid", arbitrary_types_allowed=True
+    )
+    node: str = Field(min_length=1)
+    index: int = Field(ge=0, strict=True)
+    encoding: Encoding = Field()
+
+
+type Operation = QuantizeInput | QuantizeOutput | QuantizeConstant | RescaleInput
 
 
 class QuantizationPlan(BaseModel):
@@ -66,9 +77,14 @@ class QuantizationPlan(BaseModel):
     def validate_invariants(self) -> Self:
         """Reject duplicate operations and mixed transform/calibration revisions."""
         keys: set[tuple[str, int]] = set()
+        outputs: set[tuple[str, int]] = set()
         transforms: set[str] = set()
         for operation in self.operations:
             match operation:
+                case QuantizeOutput(node=node, index=index):
+                    if (node, index) in outputs:
+                        raise ValueError("duplicate output quantization")
+                    outputs.add((node, index))
                 case (
                     QuantizeInput(node=node, index=index)
                     | QuantizeConstant(node=node, index=index)
@@ -82,9 +98,9 @@ class QuantizationPlan(BaseModel):
                     transforms.add(node)
                 case _:
                     assert_never(operation)
-        if transforms and keys:
+        if transforms and (keys or outputs):
             raise ValueError("lower transforms and recalibrate before quantizing")
-        affected = transforms | {node for node, _ in keys}
+        affected = transforms | {node for node, _ in keys | outputs}
         if affected.intersection(self.excluded):
             raise ValueError("excluded nodes cannot have plan operations")
         return self

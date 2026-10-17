@@ -19,7 +19,7 @@ from torchvision import models
 
 from examples._shared.cli import run_and_report
 from examples._shared.environment import environment
-from examples._shared.plans import coverage, save_plans
+from examples._shared.plans import coverage, save_execution, save_plans
 from examples._shared.schema import Coverage, Method, QuantizationMethod
 from examples._shared.vision.data import download_dataset, read_input, select_records
 from examples._shared.vision.measurement import Runner, measure
@@ -263,6 +263,9 @@ def quantized_variants(
         path = config.output / f"{method.value}.onnx"
         onnx.save(result.model, path)
         save_plans(config.output / f"{method.value}.plan.json", result.plans)
+        save_execution(
+            config.output / f"{method.value}.execution.json", result.execution
+        )
         runners[method] = OrtRunner(path, config.threads)
         scopes[method] = coverage(graph, result.plans)
     return Ok((runners, scopes))

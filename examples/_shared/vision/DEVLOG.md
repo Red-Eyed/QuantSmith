@@ -1,5 +1,36 @@
 # Pretrained model experiment log
 
+## 2026-10-17 — Complete static integer execution and CPU compilation audit
+
+The previous pipeline stored integer weights but MinMax ResNet18 compiled only
+8/20 convolutions to integer kernels. Complete producer output boundaries and
+INT32 bias preparation in the ORT adapter, while retaining standalone numerical
+algorithm contracts. Widen weight scales for channels whose bias would overflow
+the INT32 accumulator; expose these encodings in the plan. Unsupported static
+layouts remain FP32 and receive reasons. An unexpected admitted float fallback
+fails the compilation audit. Vision examples save execution evidence separately
+from plan coverage. The architecture and restrictions are in `docs/`.
+
+The 0.9.0 implementation was measured before the metadata bump, so generated
+environment records say 0.8.4. Same seed 42, 128 train calibration and 256 held-out
+Imagenette images, batch one, CPUExecutionProvider, one thread, 300 timings.
+All methods now verify 20/20, 52/52 and 81/81 integer convolutions for ResNet18,
+MobileNetV2 and EfficientNetB0 respectively, plus classifiers and residual Adds.
+
+ResNet18 MinMax improves from 28.59 to 9.52 ms, with top-1 changing from 67.58%
+to 66.41%. FP32 is 4.54 ms. MobileNetV2 MinMax is 3.75 ms and 58.59%, compared
+with 3.40 ms and 63.28% previously. EfficientNetB0 Percentile is 8.57 ms and
+64.84%, compared with 13.31 ms and 69.53%. EfficientNetB0 MinMax/SmoothQuant
+accuracy drops further, to 28.52%/30.08%. Integer coverage is achieved; general
+accuracy/latency improvements are not. Complete output boundaries also interrupt
+some specialized integer clipping paths; this regression remains explicit TBD.
+
+Fresh inference-only RSS high-water marks are approximately 123/108/133 MiB for
+MinMax across the three models, versus 214/117/142 MiB FP32. These include startup,
+Python, NumPy, ORT, graph serialization and buffers, not steady-state tensor memory.
+Detailed tables and experiment limitations are in `docs/integer-execution.md`;
+raw artifacts are under `work_dir/artifacts/integer_execution/`.
+
 ## 2026-10-17 — Functional rewrite planning and default ORT execution
 
 The 0.8.3 implementation mixed recognition, numerical validation, name allocation,

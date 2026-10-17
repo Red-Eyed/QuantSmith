@@ -373,7 +373,7 @@ def test_pipeline_adds_calibrated_boundaries(residual_model: ModelProto) -> None
     deployed = expect_ok(quantize(residual_model, replay_inputs, stages))
     assert residual_model.SerializeToString() == before
     assert any(node.op_type == "QLinearMul" for node in deployed.model.graph.node)
-    assert any(node.op_type == "Min" for node in deployed.model.graph.node)
+    assert any(node.op_type == "Clip" for node in deployed.model.graph.node)
     assert not any(node.op_type == "Div" for node in deployed.model.graph.node)
     from examples._shared.plans import coverage
 
@@ -393,18 +393,21 @@ def test_pipeline_adds_calibrated_boundaries(residual_model: ModelProto) -> None
 
 
 @pytest.mark.parametrize("dtype", [IntegerType.UINT8, IntegerType.INT8])
-def test_static_only_has_no_scaling_boundaries(
+def test_static_only_calibrates_supported_residuals(
     residual_model: ModelProto, dtype: IntegerType
 ) -> None:
-    """Static-only stages do not acquire smoothing or residual boundary operations."""
+    """UINT8 residual regions receive boundaries without requiring smoothing."""
     stages = (supported(StaticW8A8(activation_type=dtype)),)
     result = expect_ok(quantize(residual_model, replay_inputs, stages))
     assert not any(node.op_type == "QLinearMul" for node in result.model.graph.node)
-    assert {operation.node for operation in result.plans[0].operations} == {
+    expected = {
         "producer",
         "middle",
         "consumer",
     }
+    if dtype == IntegerType.UINT8:
+        expected.add("residual")
+    assert {operation.node for operation in result.plans[0].operations} == expected
 
 
 def test_residual_exclusion_survives_boundary_extension(
@@ -462,7 +465,7 @@ def test_boundary_missing_statistics_is_expected_failure(
     node = next(node for node in graph.nodes if node.name == "residual")
     algorithm = BoundaryQuantizer()
     needs = expect_ok(algorithm.requirements(node, graph))
-    assert {request.tensor for request in needs.ranges} == {"c", "x"}
+    assert {request.tensor for request in needs.ranges} == {"c", "x", "d"}
     expect_error(
         algorithm.plan(node, graph, Statistics(ranges={}, histograms={})),
         "statistics were not collected",

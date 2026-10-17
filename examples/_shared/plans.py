@@ -2,17 +2,19 @@
 
 import json
 from pathlib import Path
-from typing import TypedDict, assert_never
+from typing import Literal, TypedDict, assert_never
 
 import numpy as np
 
 from examples._shared.schema import Coverage
-from quantsmith.domain import FloatArray, Graph, IntArray, PerChannel, PerTensor
+from quantsmith.backends.onnx.integer_execution.audit import ExecutionReport
+from quantsmith.domain import Absent, FloatArray, Graph, IntArray, PerChannel, PerTensor
 from quantsmith.plan import (
     Operation,
     QuantizationPlan,
     QuantizeConstant,
     QuantizeInput,
+    QuantizeOutput,
     RescaleInput,
 )
 
@@ -66,10 +68,16 @@ class ConstantRecord(QuantizeRecord):
     values: ArrayRecord
 
 
+class OutputRecord(QuantizeRecord):
+    """Distinguish producer-output rounding from consumer-input rounding."""
+
+    target: Literal["output"]
+
+
 class PlanRecord(TypedDict):
     """Preserve stage operations and exclusions in the existing JSON format."""
 
-    operations: list[QuantizeRecord | ConstantRecord | RescaleRecord]
+    operations: list[QuantizeRecord | OutputRecord | ConstantRecord | RescaleRecord]
     excluded: tuple[str, ...]
 
 
@@ -85,11 +93,12 @@ def array_record(array: FloatArray | IntArray) -> ArrayRecord:
 
 def operation_record(
     operation: Operation,
-) -> QuantizeRecord | ConstantRecord | RescaleRecord:
+) -> QuantizeRecord | OutputRecord | ConstantRecord | RescaleRecord:
     """Serialize every supported operation without an untyped JSON fallback."""
     match operation:
         case (
             QuantizeInput(node=node, index=index, encoding=encoding)
+            | QuantizeOutput(node=node, index=index, encoding=encoding)
             | QuantizeConstant(node=node, index=index, encoding=encoding)
         ):
             granularity: GranularityRecord | ChannelRecord
@@ -110,6 +119,13 @@ def operation_record(
                 },
             }
             match operation:
+                case QuantizeOutput():
+                    return OutputRecord(
+                        node=node,
+                        index=index,
+                        encoding=record["encoding"],
+                        target="output",
+                    )
                 case QuantizeConstant(values=values):
                     return ConstantRecord(
                         node=record["node"],
@@ -142,6 +158,11 @@ def save_plans(path: Path, plans: tuple[QuantizationPlan, ...]) -> None:
     path.write_text(json.dumps(records, indent=2))
 
 
+def save_execution(path: Path, execution: ExecutionReport | Absent) -> None:
+    """Persist verified CPU operators or a typed reason the audit is absent."""
+    path.write_text(execution.model_dump_json(indent=2))
+
+
 def coverage(graph: Graph, plans: tuple[QuantizationPlan, ...]) -> Coverage:
     """Summarize constant-weight scope and the actual operations in saved plans."""
     eligible = {
@@ -161,7 +182,7 @@ def coverage(graph: Graph, plans: tuple[QuantizationPlan, ...]) -> Coverage:
                         quantized.append(name)
                 case RescaleInput(node=name):
                     transformed.append(name)
-                case QuantizeInput() | QuantizeConstant():
+                case QuantizeInput() | QuantizeOutput() | QuantizeConstant():
                     pass
                 case _:
                     assert_never(operation)

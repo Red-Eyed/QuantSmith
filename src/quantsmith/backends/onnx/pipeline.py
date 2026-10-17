@@ -9,18 +9,26 @@ from pydantic import BaseModel, ConfigDict, Field
 from quantsmith.algorithms.contracts import Algorithm
 from quantsmith.algorithms.shell import build_plan
 from quantsmith.backends.onnx import admit, describe, lower, normalize
+from quantsmith.backends.onnx.integer_execution.audit import (
+    ExecutionReport,
+    UnverifiedNode,
+    audit_execution,
+)
+from quantsmith.backends.onnx.integer_execution.planning import execution_rules
 from quantsmith.backends.onnx.optimization import optimize
 from quantsmith.backends.onnx.ort_scaling import lower_integer_scaling
 from quantsmith.backends.onnx.ort_scaling.boundaries import with_boundaries
 from quantsmith.calibration import Samples
+from quantsmith.domain import Absent
 from quantsmith.plan import (
     QuantizationPlan,
     QuantizeConstant,
     QuantizeInput,
+    QuantizeOutput,
     RescaleInput,
 )
 from quantsmith.result import Err, Ok, QuantSmithError, Result
-from quantsmith.rules import Rules
+from quantsmith.rules import Exclude, Rules
 from quantsmith.runtime import OnnxEvaluator
 
 
@@ -32,6 +40,11 @@ class PipelineResult(BaseModel):
     )
     model: ModelProto = Field()
     plans: tuple[QuantizationPlan, ...] = Field()
+    execution: ExecutionReport | Absent = Field(
+        default_factory=lambda: Absent(
+            reason="this pipeline did not audit integer execution"
+        )
+    )
 
 
 @dataclass(frozen=True)
@@ -41,6 +54,7 @@ class StageState:
     model: ModelProto
     plans: tuple[QuantizationPlan, ...] = ()
     scaling: frozenset[str] = frozenset()
+    exclusions: tuple[UnverifiedNode, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -62,7 +76,7 @@ def _stage_kind(plan: QuantizationPlan) -> SmoothingStage | QuantizationStage:
         match operation:
             case RescaleInput(node=name):
                 nodes.add(name)
-            case QuantizeInput() | QuantizeConstant():
+            case QuantizeInput() | QuantizeOutput() | QuantizeConstant():
                 pass
             case _:
                 assert_never(operation)
@@ -124,7 +138,11 @@ def _advance(
         case Err() as error:
             return error
         case Ok(graph):
-            configured = with_boundaries(state.model, graph, rules, state.scaling)
+            configured = execution_rules(
+                state.model,
+                graph,
+                with_boundaries(state.model, graph, rules, state.scaling),
+            )
     match build_plan(
         graph,
         OnnxEvaluator(state.model),
@@ -135,7 +153,18 @@ def _advance(
         case Err() as error:
             return error
         case Ok(plan):
-            return _lower_stage(state, plan)
+            exclusions: list[UnverifiedNode] = []
+            for node in graph.nodes:
+                match configured.resolve(node, graph):
+                    case Exclude(reason=reason):
+                        exclusions.append(
+                            UnverifiedNode(
+                                node=node.name, operator=node.op, reason=reason
+                            )
+                        )
+                    case _:
+                        pass
+            return _lower_stage(replace(state, exclusions=tuple(exclusions)), plan)
 
 
 def quantize(
@@ -145,17 +174,20 @@ def quantize(
     *,
     histogram_bins: int = 2048,
 ) -> Result[PipelineResult, QuantSmithError]:
-    """Build an ORT graph with fresh calibration at every transformed revision.
+    """Build and audit an ORT CPU graph with fresh per-revision calibration.
 
     SmoothQuant followed by built-in UINT8 static quantization automatically adds
     calibrated integer scaling boundaries. This changes rounding and can introduce
     ORT-specific operators; evaluate accuracy on the returned model. Unsupported
-    layouts retain their existing execution paths. Expected failures use Result.
+    static layouts retain FP32 computation. Selected admitted static operators must
+    compile to integer kernels or return an execution failure. Output rounding and
+    accumulator-safe bias preparation can change accuracy. Expected failures use Result.
     """
     match admit("ONNX validation", lambda: normalize(model)):
         case Err() as error:
             return error
         case Ok(current):
+            source = current
             state = StageState(current)
     for rules in stages:
         match _advance(state, rules, samples, histogram_bins):
@@ -163,4 +195,12 @@ def quantize(
                 return error
             case Ok(updated):
                 state = updated
-    return Ok(PipelineResult(model=state.model, plans=state.plans))
+    match audit_execution(source, state.model, state.plans, state.exclusions):
+        case Err() as error:
+            return error
+        case Ok(execution):
+            return Ok(
+                PipelineResult(
+                    model=state.model, plans=state.plans, execution=execution
+                )
+            )

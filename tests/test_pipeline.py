@@ -34,7 +34,7 @@ def test_static_qdq(
     assert operator_case.model.SerializeToString() == before
     onnx.checker.check_model(result.model)
     operations = result.plans[0].operations
-    assert len(operations) == 2
+    assert len(operations) == 3
     match operations[1]:
         case QuantizeInput(encoding=encoding):
             assert encoding.granularity == PerChannel(axis=operator_case.weight_axis)

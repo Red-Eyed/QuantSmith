@@ -26,7 +26,13 @@ selected quantizable weights still require finite numerical statistics.
 
 `pipeline.quantize` is application wiring: domain analysis, an ORT evaluator,
 planning, and lowering for each stage. It invalidates prior statistics by collecting
-a fresh set at every graph revision. Filesystem loading lives only at this boundary.
+a fresh set at every graph revision. Built-in static methods receive calibrated
+producer outputs and accumulator-safe INT32 biases through `integer_execution`.
+The final graph is compiled privately for CPU and audited against selected integer
+operations. `PipelineResult.execution` contains the evidence or an explicit
+`Absent` for pipelines that do not perform this audit, such as reconstruction.
+See [architecture](../../../../docs/architecture.md) and
+[execution restrictions](../../../../docs/integer-execution.md).
 
 After a stage containing rescaling operations, `pipeline.quantize` invokes the
 concrete `optimization.optimize` pass before describing and calibrating the next
@@ -49,13 +55,14 @@ for provider-specific QDQ fusion, kernel selection, and buffer management.
 ONNX Runtime is the execution target. SmoothQuant followed by built-in UINT8
 `StaticW8A8` automatically uses the calibrated integer execution path where
 supported. ONNX remains the serialization format; execution may use ORT contrib
-operators. Stages without prior smoothing and signed activation stages do not
-acquire additional scaling boundaries.
+operators. Signed activation stages do not acquire automatic UINT8 scaling or
+residual boundaries. Static-only UINT8 stages do acquire connected residual
+boundaries, independently of smoothing.
 
 Before static calibration, it extends the rules with MinMax UINT8 boundaries on
 remaining smoothing divisions and connected residual Add operands. Explicit
 exclusion overrides and custom boundary algorithms remain authoritative. These
-additional `QuantizeInput` operations appear in the same stage's returned plan;
+additional `QuantizeInput` and residual `QuantizeOutput` operations appear in the same stage's returned plan;
 calibration streams the same replay factory without retaining prior batches.
 The boundary ranges use MinMax even when the weight-bearing stage uses Percentile.
 
@@ -65,6 +72,8 @@ channel-dependent ReLU6 upper bounds. Remaining eligible DQ → Div → Q bounda
 use `com.microsoft::QLinearMul` with UINT8 reciprocal coefficients. Shared producer
 values, exposed outputs, unsupported encodings/layouts, and coefficients that
 cannot be represented safely are preserved or use the supported fallback.
+Complete Conv output/bias boundaries can make the specialized clipping pattern
+ineligible; Clip then remains FP32. Improving this interaction is documented TBD.
 
 Integer execution changes rounding and quantizes additional tensors. Plans record the
 pre-rewrite calibration decisions, including the new boundaries; the final ONNX
