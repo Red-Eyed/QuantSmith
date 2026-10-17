@@ -10,7 +10,13 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12"
 authors = [{name = "Vadym Stupakov", email = "vadim.stupakov@gmail.com"}]
-dependencies = ["numpy>=2", "onnx>=1.17", "onnxruntime>=1.20", "pydantic>=2"]
+dependencies = [
+    "numpy>=2",
+    "onnx>=1.17",
+    "onnxruntime>=1.20",
+    "pydantic>=2",
+    "stackformers>=4.6.0",
+]
 
 [project.optional-dependencies]
 qdrop = ["torch>=2.6"]

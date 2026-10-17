@@ -1395,6 +1395,7 @@ dependencies = [
     { name = "onnx" },
     { name = "onnxruntime" },
     { name = "pydantic" },
+    { name = "stackformers" },
 ]
 
 [package.optional-dependencies]
@@ -1430,6 +1431,7 @@ requires-dist = [
     { name = "onnx", specifier = ">=1.17" },
     { name = "onnxruntime", specifier = ">=1.20" },
     { name = "pydantic", specifier = ">=2" },
+    { name = "stackformers", specifier = ">=4.6.0" },
     { name = "torch", marker = "extra == 'qdrop'", specifier = ">=2.6" },
 ]
 provides-extras = ["qdrop"]
