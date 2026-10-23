@@ -2,7 +2,7 @@
 
 from collections import Counter
 from pathlib import Path
-from typing import Literal
+from typing import Literal, TypeAlias
 
 import numpy as np
 import onnx
@@ -48,7 +48,7 @@ from quantsmith.pipeline import QuantizationResult
 from quantsmith.pipeline.policies import FunctionOutputs
 from quantsmith.result import Err, Ok, QuantSmithError, Result
 
-type RevisionName = Literal["original", "optimized"]
+RevisionName: TypeAlias = Literal["original", "optimized"]
 
 
 class Config(BaseSettings):

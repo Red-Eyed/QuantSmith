@@ -6,7 +6,6 @@ import sys
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import override
 
 import numpy as np
 import onnx
@@ -21,6 +20,7 @@ from onnxruntime.quantization import (
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, CliApp, CliImplicitFlag, SettingsConfigDict
 from rich.console import Console
+from typing_extensions import override
 
 from examples._shared.environment import environment
 from examples._shared.schema import Environment

@@ -1,13 +1,17 @@
 """Named typed example recipes instead of runtime pipeline lookup dictionaries."""
 
 from dataclasses import dataclass
-from typing import assert_never
+from typing import Generic, assert_never
+
+from typing_extensions import TypeVar
 
 from examples._shared.schema import QuantizationMethod
 
+Recipe = TypeVar("Recipe", infer_variance=True)
+
 
 @dataclass(frozen=True)
-class Recipes[Recipe]:
+class Recipes(Generic[Recipe]):
     """Require one declared configuration for each demonstrated quantization method."""
 
     minmax: Recipe

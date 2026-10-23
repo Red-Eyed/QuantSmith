@@ -6,11 +6,15 @@ from contextlib import redirect_stdout
 from pathlib import Path
 
 from pydantic import BaseModel
+from typing_extensions import TypeVar
 
 from quantsmith.result import Err, Ok, QuantSmithError, Result
 
+ConfigT = TypeVar("ConfigT", infer_variance=True)
+ReportT = TypeVar("ReportT", infer_variance=True, bound=BaseModel)
 
-def run_and_report[ConfigT, ReportT: BaseModel](
+
+def run_and_report(
     config: ConfigT,
     run: Callable[[ConfigT], Result[ReportT, QuantSmithError]],
     *,

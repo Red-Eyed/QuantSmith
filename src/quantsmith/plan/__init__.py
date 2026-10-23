@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Self, assert_never
+from typing import Self, TypeAlias, assert_never
 
 from pydantic import (
     BaseModel,
@@ -69,7 +69,7 @@ class FloatOutput(BaseModel):
     index: int = Field(ge=0, strict=True)
 
 
-type Operation = (
+Operation: TypeAlias = (
     QuantizeInput | QuantizeOutput | FloatOutput | QuantizeConstant | RescaleInput
 )
 

@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from itertools import islice
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Literal
+from typing import Literal, TypeAlias
 from urllib.request import urlopen
 
 import ijson
@@ -24,8 +24,8 @@ from torch import Tensor
 from examples.mobile_captioning.schema import Config, Vocabulary
 from quantsmith.domain import FloatArray
 
-type Split = Literal["train", "calibration", "evaluation"]
-type Partition = Literal["train2017", "val2017"]
+Split: TypeAlias = Literal["train", "calibration", "evaluation"]
+Partition: TypeAlias = Literal["train2017", "val2017"]
 _ROOT = "https://s3.amazonaws.com/images.cocodataset.org"
 _IDENTITY_ROW = TypeAdapter(tuple[int])
 _CAPTION_ROW = TypeAdapter(tuple[str])

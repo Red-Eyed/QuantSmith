@@ -2,11 +2,10 @@
 using Stackformers attention.
 """
 
-from typing import override
-
 import torch
 from stackformers import TransformerEncoder, make_padded_input, plain_encoder_config
 from torch import Tensor, nn
+from typing_extensions import override
 
 
 class CharacterTransformer(nn.Module):

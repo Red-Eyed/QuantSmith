@@ -4,7 +4,7 @@ from collections.abc import Callable
 from copy import deepcopy
 from hashlib import sha256
 from pathlib import Path
-from typing import Literal, override
+from typing import Literal, TypeAlias
 from zipfile import ZIP_DEFLATED, ZipFile
 
 import numpy as np
@@ -26,6 +26,7 @@ from stackformers import (
 from stackformers.feedforward.config import SwiGLUConfig
 from stackformers.feedforward.swiglu import SwiGLU
 from torch import Tensor, nn
+from typing_extensions import override
 
 from examples._shared.environment import environment
 from examples._shared.schema import Environment
@@ -45,8 +46,10 @@ from examples.quantization_performance.transformer_kernels import (
     Config as TimingConfig,
 )
 
-type Workload = Literal["self_attention", "cross_attention", "swiglu", "transformer"]
-type Layout = Literal["unpacked", "attention_packed", "ffn_packed", "packed"]
+Workload: TypeAlias = Literal[
+    "self_attention", "cross_attention", "swiglu", "transformer"
+]
+Layout: TypeAlias = Literal["unpacked", "attention_packed", "ffn_packed", "packed"]
 
 
 class PackedConversion(BaseModel):

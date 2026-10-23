@@ -1,6 +1,6 @@
 """Executable ORT CPU scale-axis probes independent of quantizer restrictions."""
 
-from typing import Literal
+from typing import Literal, TypeAlias
 
 import numpy as np
 import onnxruntime as ort
@@ -18,7 +18,7 @@ _OUTPUTS = TypeAdapter(
     list[NDArray[np.generic]],
     config=ConfigDict(strict=True, arbitrary_types_allowed=True),
 )
-type Operator = Literal["QLinearConv", "QLinearMatMul"]
+Operator: TypeAlias = Literal["QLinearConv", "QLinearMatMul"]
 
 
 def kernel_model(

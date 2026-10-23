@@ -4,11 +4,11 @@ build-backend = "hatchling.build"
 
 [project]
 name = "quantsmith"
-version = "0.10.2"
+version = "0.10.3"
 description = "Composable post-training quantization with explicit plans"
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 authors = [{name = "Vadym Stupakov", email = "vadim.stupakov@gmail.com"}]
 dependencies = [
     "numpy>=2",
@@ -16,6 +16,7 @@ dependencies = [
     "onnxruntime>=1.20",
     "pydantic>=2",
     "stackformers>=4.6.0",
+    "typing-extensions>=4.6",
 ]
 
 [project.optional-dependencies]

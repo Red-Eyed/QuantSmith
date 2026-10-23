@@ -3,11 +3,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Generic, Protocol
+
+from typing_extensions import TypeVar
 
 from quantsmith.calibration import Samples
 from quantsmith.calibration.contracts import DEFAULT_CHANNEL_HISTOGRAM_BYTES
 from quantsmith.result import Err, Ok, QuantSmithError, Result
+
+Before = TypeVar("Before", infer_variance=True)
+Between = TypeVar("Between", infer_variance=True)
+After = TypeVar("After", infer_variance=True)
+Next = TypeVar("Next", infer_variance=True)
 
 
 @dataclass(frozen=True)
@@ -19,7 +26,7 @@ class CalibrationContext:
     max_channel_histogram_bytes: int = DEFAULT_CHANNEL_HISTOGRAM_BYTES
 
 
-class Step[Before, After](Protocol):
+class Step(Protocol[Before, After]):
     """Declare one typed transition without string registration or global dispatch."""
 
     def run(
@@ -30,7 +37,7 @@ class Step[Before, After](Protocol):
 
 
 @dataclass(frozen=True)
-class Sequence[Before, Between, After]:
+class Sequence(Generic[Before, Between, After]):
     """Connect stages only when the preceding output fits the following input."""
 
     first: Step[Before, Between]
@@ -48,12 +55,12 @@ class Sequence[Before, Between, After]:
 
 
 @dataclass(frozen=True)
-class Pipeline[Before, After]:
+class Pipeline(Generic[Before, After]):
     """Store a declared executable program whose composition is checked statically."""
 
     step: Step[Before, After]
 
-    def then[Next](self, following: Step[After, Next]) -> Pipeline[Before, Next]:
+    def then(self, following: Step[After, Next]) -> Pipeline[Before, Next]:
         """Return a new typed program without mutating this declaration."""
         return Pipeline(Sequence(self.step, following))
 

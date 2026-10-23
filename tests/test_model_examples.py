@@ -1,7 +1,7 @@
 """Offline regressions for real Torch export, Transformer causality, and metrics."""
 
 from collections.abc import Callable, Iterator, Mapping
-from typing import Literal
+from typing import Literal, TypeAlias
 
 import numpy as np
 import onnx
@@ -66,7 +66,7 @@ from quantsmith.pipeline.policies import Outputs
 from quantsmith.runtime import OnnxEvaluator
 from tests.outcomes import expect_error, expect_ok
 
-type ModelKind = TaskKind | ModelName | Literal["projection"]
+ModelKind: TypeAlias = TaskKind | ModelName | Literal["projection"]
 
 
 class ExportCase(BaseModel):

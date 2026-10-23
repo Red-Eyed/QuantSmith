@@ -3,6 +3,7 @@
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TypeAlias
 
 import numpy as np
 import onnxruntime as ort
@@ -15,8 +16,8 @@ _OUTPUTS = TypeAdapter(
     list[NDArray[np.generic]],
     config=ConfigDict(arbitrary_types_allowed=True, strict=True),
 )
-type Encode = Callable[[FloatArray], FloatArray]
-type Decode = Callable[[NDArray[np.int64], FloatArray], FloatArray]
+Encode: TypeAlias = Callable[[FloatArray], FloatArray]
+Decode: TypeAlias = Callable[[NDArray[np.int64], FloatArray], FloatArray]
 
 
 def session(path: Path, threads: int, *, profile: bool = False) -> ort.InferenceSession:

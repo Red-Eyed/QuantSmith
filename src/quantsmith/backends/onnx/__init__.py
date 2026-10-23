@@ -16,6 +16,7 @@ from onnx import (
     helper,
     numpy_helper,
 )
+from typing_extensions import TypeVar
 
 from quantsmith.domain import (
     Encoding,
@@ -36,8 +37,10 @@ from quantsmith.plan import (
 from quantsmith.reconstruction.affine import codes
 from quantsmith.result import FailureKind, QuantSmithError, Result, failure, validate
 
+T = TypeVar("T", infer_variance=True)
 
-def admit[T](operation: str, call: Callable[[], T]) -> Result[T, QuantSmithError]:
+
+def admit(operation: str, call: Callable[[], T]) -> Result[T, QuantSmithError]:
     """Translate ONNX checker/inference errors as well as validation and I/O errors."""
     try:
         return validate(operation, call)

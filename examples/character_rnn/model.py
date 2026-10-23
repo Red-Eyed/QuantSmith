@@ -1,9 +1,8 @@
 """Concrete Torch architecture used by this quantization demonstration."""
 
-from typing import override
-
 import torch
 from torch import Tensor, nn
+from typing_extensions import override
 
 
 class CharacterRNN(nn.Module):

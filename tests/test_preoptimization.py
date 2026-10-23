@@ -2,6 +2,7 @@
 
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
+from typing import TypeAlias
 
 import numpy as np
 import onnx
@@ -23,7 +24,7 @@ from quantsmith.backends.onnx.integer_execution.audit import ExecutionReport
 from quantsmith.domain import Absent, FloatArray
 from quantsmith.result import Err, Ok
 
-type FloatSamples = Callable[[], Iterable[Mapping[str, FloatArray]]]
+FloatSamples: TypeAlias = Callable[[], Iterable[Mapping[str, FloatArray]]]
 
 
 @pytest.fixture

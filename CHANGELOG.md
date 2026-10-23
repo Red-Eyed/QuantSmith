@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.3
+
+### New Features
+
+- Add Python 3.11 support and pin the development environment to Python 3.11.15.
+  Preserve typed results, pipeline composition, and model validation using
+  compatible typing declarations and `typing-extensions`.
+
 ## 0.10.2
 
 ### New Features

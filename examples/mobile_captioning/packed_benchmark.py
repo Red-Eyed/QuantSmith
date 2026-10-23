@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from hashlib import file_digest
 from importlib.metadata import version
 from pathlib import Path
-from typing import Literal
+from typing import Literal, TypeAlias
 
 import numpy as np
 import onnx
@@ -54,7 +54,7 @@ from examples.quantization_performance.packed_stackformers import (
 )
 from quantsmith.domain import FloatArray
 
-type Layout = Literal["unpacked", "attention_packed", "packed"]
+Layout: TypeAlias = Literal["unpacked", "attention_packed", "packed"]
 
 
 class Settings(BaseSettings):

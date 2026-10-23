@@ -2,6 +2,7 @@
 
 from collections.abc import Callable, Mapping
 from time import perf_counter
+from typing import TypeAlias
 
 import numpy as np
 from pydantic import BaseModel, Field
@@ -19,7 +20,7 @@ from examples._shared.training.schema import (
 from quantsmith.domain import FloatArray, InputArray
 from quantsmith.result import Err, Ok, QuantSmithError, Result
 
-type Predictor = Callable[[InputArray], Result[FloatArray, QuantSmithError]]
+Predictor: TypeAlias = Callable[[InputArray], Result[FloatArray, QuantSmithError]]
 
 
 class Totals(BaseModel):

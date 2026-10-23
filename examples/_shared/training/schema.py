@@ -3,6 +3,7 @@
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
+from typing import TypeAlias
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field
@@ -18,7 +19,7 @@ from examples._shared.schema import (
 from quantsmith.domain import InputArray
 from quantsmith.pipeline.policies import Outputs, ProducerOutputs
 
-type Tokens = np.ndarray[tuple[int, ...], np.dtype[np.int64]]
+Tokens: TypeAlias = np.ndarray[tuple[int, ...], np.dtype[np.int64]]
 
 
 class TaskKind(StrEnum):

@@ -1,7 +1,5 @@
 """Pretrained mobile spatial features and Stackformers encoder–decoder layers."""
 
-from typing import override
-
 import timm
 import torch
 from einops import rearrange
@@ -17,6 +15,7 @@ from stackformers.positional.config import NoPosEncodingConfig
 from stackformers.presets.encoder import TransformerEncoderConfig
 from timm.models.mobilenetv3 import MobileNetV3
 from torch import Tensor, nn
+from typing_extensions import override
 
 from examples.mobile_captioning.schema import ModelConfig
 

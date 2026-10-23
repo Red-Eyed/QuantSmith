@@ -9,7 +9,7 @@ from hashlib import sha256
 from pathlib import Path
 from statistics import median
 from time import perf_counter_ns
-from typing import Literal
+from typing import Literal, TypeAlias
 
 import numpy as np
 import onnx
@@ -47,7 +47,7 @@ from quantsmith.domain import FloatArray
 _ARRAYS = TypeAdapter(
     list[NDArray[np.generic]], config=ConfigDict(arbitrary_types_allowed=True)
 )
-type Scheme = Literal[
+Scheme: TypeAlias = Literal[
     "fp32",
     "dynamic",
     "fixed_quantized_u8s8",

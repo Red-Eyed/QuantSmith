@@ -5,8 +5,10 @@ from __future__ import annotations
 from collections.abc import Iterable, Iterator, Mapping
 from copy import deepcopy
 from dataclasses import dataclass
+from typing import Generic
 
 from onnx import ModelProto
+from typing_extensions import TypeVar
 
 from quantsmith.backends.onnx.pipeline import quantize
 from quantsmith.calibration import Samples
@@ -19,6 +21,8 @@ from quantsmith.config import (
 from quantsmith.domain import InputArray
 from quantsmith.pipeline import FloatGraph, Pipeline, QuantizationResult
 from quantsmith.result import FailureKind, QuantSmithError, Result, failure
+
+State = TypeVar("State", infer_variance=True)
 
 
 @dataclass(frozen=True)
@@ -46,7 +50,7 @@ class ModelBound:
 
 
 @dataclass(frozen=True)
-class Quantizer[State]:
+class Quantizer(Generic[State]):
     """Preserve lifecycle restrictions through generics instead of mutable flags."""
 
     state: State

@@ -1,6 +1,6 @@
 """Closed built-in alternatives with fields belonging only to their own variant."""
 
-from typing import Literal
+from typing import Literal, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -26,7 +26,7 @@ class JointFoldOnly(BaseModel):
     kind: Literal["joint_fold_only"] = Field(default="joint_fold_only")
 
 
-type Folding = RuntimeScaling | FoldOnly | JointFoldOnly
+Folding: TypeAlias = RuntimeScaling | FoldOnly | JointFoldOnly
 
 
 class ProducerOutputs(BaseModel):
@@ -43,7 +43,7 @@ class FunctionOutputs(BaseModel):
     kind: Literal["function"] = Field(default="function")
 
 
-type Outputs = ProducerOutputs | FunctionOutputs
+Outputs: TypeAlias = ProducerOutputs | FunctionOutputs
 
 
 class QuantizedMatMulOutputs(BaseModel):
@@ -60,4 +60,4 @@ class FloatMatMulOutputs(BaseModel):
     kind: Literal["float"] = Field(default="float")
 
 
-type MatMulOutputs = QuantizedMatMulOutputs | FloatMatMulOutputs
+MatMulOutputs: TypeAlias = QuantizedMatMulOutputs | FloatMatMulOutputs

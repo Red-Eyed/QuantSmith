@@ -1,11 +1,14 @@
 """Test assertions that preserve the failure diagnostic when success is expected."""
 
 import pytest
+from typing_extensions import TypeVar
 
 from quantsmith.result import Err, Ok, QuantSmithError, Result
 
+T = TypeVar("T", infer_variance=True)
 
-def expect_ok[T](outcome: Result[T, QuantSmithError]) -> T:
+
+def expect_ok(outcome: Result[T, QuantSmithError]) -> T:
     """Assert success and include the structured diagnostic on test failure."""
     match outcome:
         case Err(error):
@@ -14,9 +17,7 @@ def expect_ok[T](outcome: Result[T, QuantSmithError]) -> T:
             return value
 
 
-def expect_error[T](
-    outcome: Result[T, QuantSmithError], detail: str
-) -> QuantSmithError:
+def expect_error(outcome: Result[T, QuantSmithError], detail: str) -> QuantSmithError:
     """Assert an expected rejection and retain its structured reason for checks."""
     match outcome:
         case Err(error):

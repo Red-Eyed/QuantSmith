@@ -2,7 +2,7 @@
 
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Literal, Self, override
+from typing import Literal, Self, TypeAlias
 
 import numpy as np
 import onnx
@@ -23,6 +23,7 @@ from stackformers.feedforward.config import GELUConfig, SwiGLUConfig
 from stackformers.feedforward.gelu import GELUFFN
 from stackformers.feedforward.swiglu import SwiGLU
 from torch import Tensor, nn
+from typing_extensions import override
 
 from quantsmith.domain import Absent
 
@@ -30,7 +31,7 @@ _ARRAY = TypeAdapter(
     NDArray[np.generic], config=ConfigDict(arbitrary_types_allowed=True)
 )
 
-type Fragment = Literal[
+Fragment: TypeAlias = Literal[
     "linear",
     "bias",
     "gelu",

@@ -1,6 +1,6 @@
 """Typed per-channel range policies for histogram-informed offline smoothing."""
 
-from typing import Literal, assert_never
+from typing import Literal, TypeAlias, assert_never
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field
@@ -42,7 +42,7 @@ class ChannelMSE(BaseModel):
     candidates: int = Field(default=16, ge=2, strict=True)
 
 
-type ChannelSelection = ChannelExtrema | ChannelPercentile | ChannelMSE
+ChannelSelection: TypeAlias = ChannelExtrema | ChannelPercentile | ChannelMSE
 
 
 def interval_at(

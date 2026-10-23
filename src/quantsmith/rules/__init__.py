@@ -1,11 +1,14 @@
 """Ordered rules with open selectors and explicit exclusion decisions."""
 
 from fnmatch import fnmatchcase
-from typing import Protocol, runtime_checkable
+from typing import Generic, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
+from typing_extensions import TypeVar
 
 from quantsmith.domain import Graph, Node
+
+T = TypeVar("T", infer_variance=True)
 
 
 @runtime_checkable
@@ -65,7 +68,7 @@ class Exclude(BaseModel):
     reason: str = Field()
 
 
-class Rule[T](BaseModel):
+class Rule(BaseModel, Generic[T]):
     """Associate a selector with a configured implementation or exclusion."""
 
     model_config = ConfigDict(
@@ -75,7 +78,7 @@ class Rule[T](BaseModel):
     decision: T | Exclude = Field()
 
 
-class Rules[T](BaseModel):
+class Rules(BaseModel, Generic[T]):
     """Resolve rules in declaration order; the last matching rule wins."""
 
     model_config = ConfigDict(

@@ -7,7 +7,7 @@ from copy import deepcopy
 from pathlib import Path
 from statistics import median
 from time import perf_counter
-from typing import Literal, override
+from typing import Literal, TypeAlias
 
 import numpy as np
 import onnx
@@ -18,6 +18,7 @@ from onnx import ModelProto, helper, numpy_helper, version_converter
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 from pydantic_settings import BaseSettings, CliApp, CliImplicitFlag, SettingsConfigDict
 from rich.console import Console
+from typing_extensions import override
 
 from examples._shared.environment import environment
 from examples._shared.schema import Environment
@@ -47,7 +48,7 @@ _ARRAYS = TypeAdapter(
     list[NDArray[np.generic]], config=ConfigDict(arbitrary_types_allowed=True)
 )
 SCHEMES = (Variant.FP32, Variant.QS_FUNCTION, Variant.ORT_QDQ, Variant.ORT_SIGNED)
-type Context = Literal["core", "region", "scalar", "channel", "full"]
+Context: TypeAlias = Literal["core", "region", "scalar", "channel", "full"]
 
 
 def ensure_report(

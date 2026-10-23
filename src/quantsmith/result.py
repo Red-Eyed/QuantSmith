@@ -3,14 +3,18 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import final
+from typing import Generic, TypeAlias, final
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from typing_extensions import TypeVar
+
+T = TypeVar("T", infer_variance=True)
+E = TypeVar("E", infer_variance=True)
 
 
 @final
 @dataclass(frozen=True, slots=True)
-class Ok[T]:
+class Ok(Generic[T]):
     """Carry a successful value unchanged for explicit pattern matching."""
 
     value: T
@@ -18,13 +22,13 @@ class Ok[T]:
 
 @final
 @dataclass(frozen=True, slots=True)
-class Err[E]:
+class Err(Generic[E]):
     """Carry an expected error unchanged for explicit pattern matching."""
 
     error: E
 
 
-type Result[T, E] = Ok[T] | Err[E]
+Result: TypeAlias = Ok[T] | Err[E]
 
 
 class FailureKind(StrEnum):
@@ -52,7 +56,7 @@ def failure(kind: FailureKind, operation: str, detail: str) -> Err[QuantSmithErr
     return Err(QuantSmithError(kind=kind, operation=operation, detail=detail))
 
 
-def validate[T](operation: str, call: Callable[[], T]) -> Result[T, QuantSmithError]:
+def validate(operation: str, call: Callable[[], T]) -> Result[T, QuantSmithError]:
     """Translate documented validation exceptions at an admission boundary.
 
     Use only where invalid input or I/O failure is expected and documented.

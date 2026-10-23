@@ -2,6 +2,7 @@
 
 from collections.abc import Callable
 from copy import deepcopy
+from typing import TypeAlias
 
 import numpy as np
 from onnx import ModelProto, NodeProto, TensorProto, helper, numpy_helper
@@ -9,7 +10,7 @@ from onnx import ModelProto, NodeProto, TensorProto, helper, numpy_helper
 from quantsmith.backends.onnx import Names
 from quantsmith.domain import Absent, FloatArray
 
-type Encoder = Callable[[FloatArray, str], TensorProto | Absent]
+Encoder: TypeAlias = Callable[[FloatArray, str], TensorProto | Absent]
 
 
 def store_constants(

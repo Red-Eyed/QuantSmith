@@ -1,7 +1,7 @@
 """Bounded minibatch training and validated eager Torch predictions."""
 
 from collections.abc import Callable
-from typing import assert_never
+from typing import TypeAlias, assert_never
 
 import numpy as np
 import torch
@@ -92,4 +92,4 @@ def train(
     return initial, probe_loss()
 
 
-type Predict = Callable[[InputArray], FloatArray]
+Predict: TypeAlias = Callable[[InputArray], FloatArray]

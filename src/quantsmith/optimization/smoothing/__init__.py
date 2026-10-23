@@ -1,6 +1,6 @@
 """Output-error selection independent of graph formats and runtime execution."""
 
-from typing import Literal, Self
+from typing import Literal, Self, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -38,7 +38,7 @@ class ObservedTensors(BaseModel):
         return self
 
 
-type Observations = ModelOutputs | ContractionOutputs | ObservedTensors
+Observations: TypeAlias = ModelOutputs | ContractionOutputs | ObservedTensors
 
 
 class CandidateScore(BaseModel):

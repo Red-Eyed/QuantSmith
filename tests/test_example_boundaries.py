@@ -2,7 +2,6 @@
 
 import json
 from pathlib import Path
-from typing import override
 from unittest.mock import patch
 
 import numpy as np
@@ -13,6 +12,7 @@ from PIL import Image
 from torch import Tensor, nn
 from torchvision.models import ResNet18_Weights
 from torchvision.transforms._presets import ImageClassification
+from typing_extensions import override
 
 from examples._shared.plans import PlanRecord, save_plans
 from examples._shared.training.data import wine_arrays

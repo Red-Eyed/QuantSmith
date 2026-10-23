@@ -3,14 +3,14 @@
 from collections.abc import Mapping
 from enum import Enum
 from types import MappingProxyType
-from typing import Self, assert_never
+from typing import Self, TypeAlias, assert_never
 
 import numpy as np
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 FloatArray = NDArray[np.float32]
-type InputArray = FloatArray | NDArray[np.int64]
+InputArray: TypeAlias = FloatArray | NDArray[np.int64]
 IntArray = NDArray[np.int8] | NDArray[np.uint8]
 
 
@@ -40,7 +40,7 @@ class PerChannel(BaseModel):
     axis: int = Field()
 
 
-type Granularity = PerTensor | PerChannel
+Granularity: TypeAlias = PerTensor | PerChannel
 
 
 class IntegerType(Enum):

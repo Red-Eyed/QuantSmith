@@ -1,6 +1,7 @@
 """Distinct graph phases and explicit transformation outcomes for the ORT shell."""
 
 from dataclasses import dataclass
+from typing import TypeAlias
 
 from onnx import ModelProto
 from pydantic import BaseModel, ConfigDict, Field
@@ -29,7 +30,7 @@ class Unfoldable:
     reason: str
 
 
-type FoldingOutcome = Folded | Unfoldable
+FoldingOutcome: TypeAlias = Folded | Unfoldable
 
 
 @dataclass(frozen=True)
