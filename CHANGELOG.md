@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.10.2
+
+### New Features
+
+- Add calibration-free Transformer fragment benchmarks authored in PyTorch and
+  executed in ONNX Runtime. Compare FP32, dynamic INT8 and fixed-grid signed/
+  unsigned integer kernels across shapes, surrounding operations and opsets;
+  retain numerical error and executed integer coverage without changing defaults.
+  Export symbolic query/KV lengths and verify FP32 and integer graphs across
+  multiple lengths, including one-token inputs, without re-exporting.
+- Add an isolated ResNet-18/MobileNetV2 performance investigation comparing
+  QuantSmith with native ONNX Runtime QDQ and QOperator quantization. Preserve
+  streamed calibration, held-out quality, alternating fresh-process timings,
+  compiled graphs, and raw traces; expose activation signedness and weight
+  granularity controls without changing library quantization defaults.
+- Add source-shape and surrounding-region benchmarks with broadcast controls,
+  batch/opset comparisons, and complete-model mixed-precision validation. Keep
+  FP32 eligible and report tuning-quality/latency tradeoffs rather than rewarding
+  integer operator count or assuming an unspecified accuracy budget.
+- Add the matched ORT preoptimization experiment: save and reload the fully
+  optimized FP32 graph as the actual QuantSmith input, calibrate each revision
+  independently, and retain parity, execution audits, lineage, and failure evidence.
+
 ## 0.10.1
 
 ### Tracked Regressions
