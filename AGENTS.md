@@ -30,7 +30,7 @@ just check                          # Ruff, formatting, strict Pyrefly, and all 
 just test                           # Full suite with pytest-xdist workers
 just test tests/test_ownership.py    # One regression module
 just test-algorithms                 # Numerical tests without parent ONNX fixtures
-just wheel                          # Build a wheel; never upload package artifacts
+just build                          # Build a wheel; never upload package artifacts
 uv run ruff format src examples tests # Apply Python formatting
 ```
 
@@ -41,7 +41,8 @@ documentation or just recipes.
 Examples write graphs, JSON plans, and reports under `work_dir/artifacts/` by default.
 Keep generated artifacts and downloaded data out of commits. Pytest temporary
 files and per-test working directories live under `work_dir/tests/`; wheel builds
-use `work_dir/dist/`. Keep runtime files in `work_dir/`, which is ignored by Git.
+use the project-root `dist/`, which is ignored by Git. Keep runtime files in
+`work_dir/`, which is ignored by Git.
 Tool caches may remain in their conventional ignored locations at the root.
 
 ## Architecture and contracts

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.4
+
+### Developers
+
+- Add `just build` to build a wheel under the project-root `dist/`; retain
+  `just wheel` as an alias.
+
 ## 0.10.3
 
 ### New Features
