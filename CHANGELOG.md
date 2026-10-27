@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.11.1
+
+### New Features
+
+- Extend dynamic W8A8 quantization to constant-weight FP32 Gemm with all
+  `transA`/`transB` layouts, unit `alpha`/`beta`, and optional broadcastable FP32
+  bias. Keep bias addition floating, preserve shared weights and excluded
+  consumers, and audit integer execution against the original Gemm identity.
+  Non-unit coefficients and unsupported layouts remain explicit exclusions.
+
 ## 0.11.0
 
 ### New Features
