@@ -27,6 +27,7 @@ from quantsmith.domain import (
     PerTensor,
 )
 from quantsmith.plan import (
+    DynamicQuantizeMatMul,
     FloatOutput,
     QuantizationPlan,
     QuantizeConstant,
@@ -133,6 +134,7 @@ class Names:
         self.used = {value.name for value in model.graph.initializer}
         self.used.update(value.name for value in model.graph.input)
         self.used.update(value.name for value in model.graph.output)
+        self.used.update(value.name for value in model.graph.value_info)
         for node in model.graph.node:
             self.used.add(node.name)
             self.used.update(node.input)
@@ -364,6 +366,16 @@ def _lower(model: ModelProto, plan: QuantizationPlan) -> ModelProto:
         operations[operation.node].append(operation)
     rewritten: list[NodeProto] = []
     for node in result.graph.node:
+        dynamic = [
+            operation
+            for operation in operations[node.name]
+            if isinstance(operation, DynamicQuantizeMatMul)
+        ]
+        if dynamic:
+            from quantsmith.backends.onnx.dynamic import lower_dynamic_matmul
+
+            rewritten.extend(lower_dynamic_matmul(result, node, dynamic[0], names.new))
+            continue
         preceding = bias_qdq(result, node, operations[node.name], names.new)
         following: list[NodeProto] = []
         for operation in operations[node.name]:
@@ -378,6 +390,10 @@ def _lower(model: ModelProto, plan: QuantizationPlan) -> ModelProto:
                     preceding.extend(rescale(result, node, operation, names))
                 case FloatOutput():
                     pass
+                case DynamicQuantizeMatMul():
+                    raise AssertionError(
+                        "dynamic operations are lowered as complete nodes"
+                    )
                 case _:
                     assert_never(operation)
         if any(

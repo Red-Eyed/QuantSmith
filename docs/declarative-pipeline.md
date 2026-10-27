@@ -18,6 +18,15 @@ also changed accuracy; it remains archived on
 The project targets ONNX Runtime. ONNX is its serialized graph format. No backend
 selection protocol or backend type parameter is needed.
 
+[`DynamicQuantizationConfig`](../src/quantsmith/algorithms/dynamic/README.md)
+declares `DynamicQuantizationStage -> VerifyStage`. Run it through
+`Quantizer.from_config(config).quantize(model).execute()` without calibration
+samples. The stage computes offline INT8 weight encodings and lowers runtime
+activation quantization, preserving symbolic sequence and cache dimensions.
+Rules select `DynamicW8A8` or `Exclude`; unsupported layouts remain floating with
+explicit audit reasons. The sample-free entry point also supports storage-only
+pipelines; static stages still fail when required samples are absent.
+
 For compact FP16 or BF16 constant storage with FP32 execution, use the separate
 [`Float16StorageConfig` or `BFloat16StorageConfig`](float16-storage.md).
 Each compiles a transform-only pipeline

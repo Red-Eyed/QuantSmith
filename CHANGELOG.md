@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.11.0
+
+### New Features
+
+- Add calibration-free dynamic W8A8 quantization for FP32 constant-weight MatMul
+  projections through `DynamicQuantizationConfig` and
+  `Quantizer.from_config(config).quantize(model).execute()`. Compute activation
+  scales at inference time, store symmetric per-column INT8 weights, preserve
+  symbolic sequence/cache dimensions, and retain FP32 outputs and floating caches.
+- Expose dynamic operations in inspectable plans and verify source-matched ORT
+  CPU integer execution with runtime activation quantization. Report unsupported
+  attention products, Gemm, Conv, and other layouts as exclusions. Document
+  optimized ARM kernel numerical differences and the need to measure deployment
+  quality and prefill/decode latency.
+
 ## 0.10.4
 
 ### Developers

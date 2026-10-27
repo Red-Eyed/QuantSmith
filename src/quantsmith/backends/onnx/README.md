@@ -1,5 +1,12 @@
 # ONNX backend
 
+[`DynamicQuantizationStage`](dynamic.py) provides calibration-free MatMul
+projection lowering with `DynamicQuantizeLinear`, `MatMulInteger`, and FP32
+restoration. It preserves symbolic shapes and floating cache interfaces and
+uses the same source-oriented execution audit. See
+[dynamic W8A8](../../algorithms/dynamic/README.md) for supported layouts and
+deployment limits.
+
 `load`/`normalize` validate input and assign deterministic names to unnamed nodes.
 `describe` translates connectivity, numeric attributes, and floating constants into
 domain records. Custom-domain operator names are qualified to avoid treating them

@@ -13,6 +13,7 @@ from quantsmith.algorithms.smoothquant.joint.ranges import (
 )
 from quantsmith.algorithms.static import StaticW8A8
 from quantsmith.backends.onnx.bfloat16_storage import BFloat16StorageStage
+from quantsmith.backends.onnx.dynamic import DynamicQuantizationStage
 from quantsmith.backends.onnx.float16_storage import Float16StorageStage
 from quantsmith.backends.onnx.stages import (
     FinishTransform,
@@ -36,6 +37,21 @@ from quantsmith.pipeline.policies import (
     QuantizedMatMulOutputs,
 )
 from quantsmith.rules import ByOperator, Exclude, Rule, Rules
+
+
+class DynamicQuantizationConfig(BaseModel):
+    """Use runtime UINT8 activations and offline per-column INT8 MatMul weights.
+
+    No samples or calibration settings are required. Other operators and runtime
+    attention products remain floating and appear in the execution exclusions.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    kind: Literal["dynamic"] = "dynamic"
+
+    def pipeline(self) -> Pipeline[FloatGraph, QuantizationResult]:
+        """Declare dynamic projection lowering followed by verified CPU execution."""
+        return Pipeline(DynamicQuantizationStage()).then(VerifyStage())
 
 
 class Float16StorageConfig(BaseModel):

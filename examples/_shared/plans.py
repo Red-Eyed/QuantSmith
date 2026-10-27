@@ -10,6 +10,7 @@ from examples._shared.schema import Coverage
 from quantsmith.backends.onnx.integer_execution.audit import ExecutionReport
 from quantsmith.domain import Absent, FloatArray, Graph, IntArray, PerChannel, PerTensor
 from quantsmith.plan import (
+    DynamicQuantizeMatMul,
     FloatOutput,
     Operation,
     QuantizationPlan,
@@ -83,6 +84,14 @@ class FloatOutputRecord(TypedDict):
     target: Literal["float_output"]
 
 
+class DynamicMatMulRecord(TypedDict):
+    """Record runtime activation quantization without a fixed activation scale."""
+
+    node: str
+    target: Literal["dynamic_matmul"]
+    weight_encoding: EncodingRecord
+
+
 class PlanRecord(TypedDict):
     """Preserve stage operations and exclusions in the existing JSON format."""
 
@@ -92,6 +101,7 @@ class PlanRecord(TypedDict):
         | ConstantRecord
         | RescaleRecord
         | FloatOutputRecord
+        | DynamicMatMulRecord
     ]
     excluded: tuple[str, ...]
 
@@ -108,9 +118,26 @@ def array_record(array: FloatArray | IntArray) -> ArrayRecord:
 
 def operation_record(
     operation: Operation,
-) -> QuantizeRecord | OutputRecord | ConstantRecord | RescaleRecord | FloatOutputRecord:
+) -> (
+    QuantizeRecord
+    | OutputRecord
+    | ConstantRecord
+    | RescaleRecord
+    | FloatOutputRecord
+    | DynamicMatMulRecord
+):
     """Serialize every supported operation without an untyped JSON fallback."""
     match operation:
+        case DynamicQuantizeMatMul(node=node, weight_encoding=encoding):
+            return DynamicMatMulRecord(
+                node=node,
+                target="dynamic_matmul",
+                weight_encoding=EncodingRecord(
+                    scale=array_record(encoding.scale),
+                    zero_point=array_record(encoding.zero_point),
+                    granularity=ChannelRecord(axis=1),
+                ),
+            )
         case FloatOutput(node=node, index=index):
             return FloatOutputRecord(node=node, index=index, target="float_output")
         case (
@@ -194,7 +221,9 @@ def coverage(graph: Graph, plans: tuple[QuantizationPlan, ...]) -> Coverage:
     for plan in plans:
         for operation in plan.operations:
             match operation:
-                case QuantizeInput(node=name, index=0):
+                case (
+                    QuantizeInput(node=name, index=0) | DynamicQuantizeMatMul(node=name)
+                ):
                     if name in eligible:
                         quantized.append(name)
                 case RescaleInput(node=name):

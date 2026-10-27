@@ -45,6 +45,13 @@ scale layouts, dtypes or execution providers.
 
 ## QuantSmith's narrower deployment contract
 
+The table below describes static quantization. The separate
+[dynamic W8A8 path](../src/quantsmith/algorithms/dynamic/README.md) supports
+rank-two constant-weight MatMul projections with runtime activation quantization,
+FP32 outputs, and no calibration samples. Runtime-weight attention products
+remain outside both paths. Dynamic execution is source-audited on ORT CPU;
+optimized ARM kernels can differ numerically from the serialized ONNX reference.
+
 | Area | Current implementation | Evidence or restriction |
 | --- | --- | --- |
 | Conv input/output | Per-tensor INT8 or UINT8 activation encoding | Static planner and output lowering; tested signedness combinations |

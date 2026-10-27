@@ -5,7 +5,7 @@ from tempfile import TemporaryDirectory
 
 import onnx
 import onnxruntime as ort
-from onnx import ModelProto
+from onnx import ModelProto, NodeProto
 from onnxruntime.capi.onnxruntime_pybind11_state import (
     Fail,
     InvalidArgument,
@@ -16,7 +16,12 @@ from onnxruntime.capi.onnxruntime_pybind11_state import (
 from pydantic import BaseModel, ConfigDict
 
 from quantsmith.domain import Absent
-from quantsmith.plan import FloatOutput, QuantizationPlan, QuantizeOutput
+from quantsmith.plan import (
+    DynamicQuantizeMatMul,
+    FloatOutput,
+    QuantizationPlan,
+    QuantizeOutput,
+)
 from quantsmith.result import FailureKind, Ok, QuantSmithError, Result, failure
 
 
@@ -83,6 +88,37 @@ def compile_cpu(model: ModelProto) -> ModelProto:
         return onnx.load(path)
 
 
+def _has_dynamic_activation(candidate: NodeProto, compiled: ModelProto) -> bool:
+    """Require runtime quantization, rather than accepting a fixed-grid kernel."""
+    if candidate.op_type == "DynamicQuantizeMatMul":
+        return candidate.domain == "com.microsoft"
+    if not candidate.input:
+        return False
+    quantizer = next(
+        (
+            node
+            for node in compiled.graph.node
+            if node.op_type == "DynamicQuantizeLinear"
+            and not node.domain
+            and len(node.output) == 3
+            and node.output[0] == candidate.input[0]
+        ),
+        None,
+    )
+    if quantizer is None:
+        return False
+    match candidate.op_type:
+        case "MatMulInteger" if len(candidate.input) >= 3:
+            return candidate.input[2] == quantizer.output[2]
+        case "MatMulIntegerToFloat" if len(candidate.input) >= 5:
+            return (
+                candidate.input[2] == quantizer.output[1]
+                and candidate.input[4] == quantizer.output[2]
+            )
+        case _:
+            return False
+
+
 def inspect_execution(
     source: ModelProto,
     compiled: ModelProto,
@@ -101,13 +137,19 @@ def inspect_execution(
         operation.node
         for plan in plans
         for operation in plan.operations
-        if isinstance(operation, QuantizeOutput | FloatOutput)
+        if isinstance(operation, QuantizeOutput | FloatOutput | DynamicQuantizeMatMul)
     }
     float_outputs = {
         operation.node
         for plan in plans
         for operation in plan.operations
         if isinstance(operation, FloatOutput)
+    }
+    dynamic = {
+        operation.node
+        for plan in plans
+        for operation in plan.operations
+        if isinstance(operation, DynamicQuantizeMatMul)
     }
     integer: list[IntegerNode] = []
     floating: list[UnverifiedNode] = []
@@ -134,12 +176,21 @@ def inspect_execution(
                 if node.op_type == "MatMul"
                 else frozenset()
             )
+        if name in dynamic:
+            allowed = (
+                frozenset(
+                    {"MatMulInteger", "MatMulIntegerToFloat", "DynamicQuantizeMatMul"}
+                )
+                if node.op_type == "MatMul"
+                else frozenset()
+            )
         matches = [
             candidate
             for candidate in compiled.graph.node
             if owners[candidate.name] == name
             and candidate.op_type in allowed
             and candidate.domain in {"", "com.microsoft", "com.ms.internal.nhwc"}
+            and (name not in dynamic or _has_dynamic_activation(candidate, compiled))
         ]
         if len(matches) != 1:
             return failure(

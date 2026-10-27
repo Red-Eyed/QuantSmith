@@ -1,5 +1,10 @@
 # Plans
 
+`DynamicQuantizeMatMul` owns a complete constant-weight projection. It contains
+only the offline weight encoding; runtime activation scales are unspecified.
+It cannot share its node with static input/output operations, and rescaling
+must be lowered as a separate graph revision before either quantization mode.
+
 A `QuantizationPlan` is an inspectable set of decisions before backend mutation.
 `QuantizeInput` owns one consumer's encoding. `RescaleInput` describes a paired
 activation/weight transformation. These are closed alternatives so new operation

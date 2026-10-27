@@ -29,6 +29,10 @@ from examples.quantization_performance.transformer_kernels import (
     measure_case,
     verify_dynamic_sequence,
 )
+from quantsmith import Quantizer
+from quantsmith.config import DynamicQuantizationConfig
+from quantsmith.domain import Absent
+from tests.outcomes import expect_ok
 
 
 @pytest.fixture
@@ -270,3 +274,42 @@ def test_dynamic_validation_rejects_static_graph(matmul_graph: ModelProto) -> No
     """Prevent a fixed graph from acquiring the report's dynamic-sequence claim."""
     with pytest.raises(ValueError, match="symbolic sequence"):
         verify_dynamic_sequence(matmul_graph)
+
+
+@pytest.mark.parametrize("kind", ["attention", "transformer"])
+def test_quantsmith_dynamic_stackformers_blocks(
+    kind: Fragment, geometry: Geometry, tmp_path: Path
+) -> None:
+    """Quantize real Stackformers projections across query/KV lengths without data."""
+    module = build_fragment(kind, geometry, 42)
+    path = tmp_path / "source.onnx"
+    with torch.inference_mode():
+        export_fragment(module, synthetic_inputs(kind, geometry, 3), path)
+    original = onnx.load(path)
+    result = expect_ok(
+        Quantizer.from_config(DynamicQuantizationConfig()).quantize(original).execute()
+    )
+    verify_dynamic_sequence(result.model)
+    assert not isinstance(result.execution, Absent)
+    assert len(result.execution.integer_nodes) >= 4
+    assert all(
+        node.source_operator == "MatMul" for node in result.execution.integer_nodes
+    )
+    options = ort.SessionOptions()
+    options.intra_op_num_threads = options.inter_op_num_threads = 1
+    runtime = ort.InferenceSession(
+        result.model.SerializeToString(), options, providers=["CPUExecutionProvider"]
+    )
+    for tokens, context in ((3, 5), (1, 6), (1, 7), (7, 2)):
+        varying = Geometry(
+            batch=geometry.batch, tokens=tokens, context=context, width=geometry.width
+        )
+        inputs = synthetic_inputs(kind, varying, 7)
+        with torch.inference_mode():
+            expected = fragment_output(module, inputs).numpy()
+        supplied = {"inputs": inputs[0].numpy(), "memory": inputs[1].numpy()}
+        feed = {value.name: supplied[value.name] for value in runtime.get_inputs()}
+        actual = run_arrays(runtime, feed)[0]
+        assert actual.shape == expected.shape
+        relative_mse = float(np.mean((actual - expected) ** 2) / np.mean(expected**2))
+        assert relative_mse < 0.005

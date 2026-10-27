@@ -15,6 +15,7 @@ from quantsmith.calibration import Samples
 from quantsmith.calibration.contracts import DEFAULT_CHANNEL_HISTOGRAM_BYTES
 from quantsmith.config import (
     BFloat16StorageConfig,
+    DynamicQuantizationConfig,
     Float16StorageConfig,
     QuantizationConfig,
 )
@@ -57,11 +58,19 @@ class Quantizer(Generic[State]):
 
     @classmethod
     def from_config(
-        cls, config: QuantizationConfig | Float16StorageConfig | BFloat16StorageConfig
+        cls,
+        config: QuantizationConfig
+        | DynamicQuantizationConfig
+        | Float16StorageConfig
+        | BFloat16StorageConfig,
     ) -> Quantizer[Configured]:
         """Compile a validated configuration without running or capturing a model."""
         match config:
-            case Float16StorageConfig() | BFloat16StorageConfig():
+            case (
+                DynamicQuantizationConfig()
+                | Float16StorageConfig()
+                | BFloat16StorageConfig()
+            ):
                 return cls.from_pipeline(config.pipeline())
             case QuantizationConfig():
                 return Quantizer(
@@ -92,7 +101,7 @@ class Quantizer(Generic[State]):
     def quantize(
         self: Quantizer[Configured], model: ModelProto
     ) -> Quantizer[ModelBound]:
-        """Bind an owned snapshot; expected model validation occurs at calibration."""
+        """Bind an owned snapshot; expected model validation occurs at execution."""
         return Quantizer(ModelBound(self.state, deepcopy(model)))
 
     def calibrate(
@@ -128,3 +137,13 @@ class Quantizer(Generic[State]):
             histogram_bins=configuration.histogram_bins,
             max_channel_histogram_bytes=configuration.max_channel_histogram_bytes,
         )
+
+    def execute(
+        self: Quantizer[ModelBound],
+    ) -> Result[QuantizationResult, QuantSmithError]:
+        """Run a calibration-free pipeline on the owned model without samples.
+
+        Dynamic quantization and storage transforms need no dataset. Stages that
+        require observations return their normal empty-calibration failure.
+        """
+        return self.calibrate(())

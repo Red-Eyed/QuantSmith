@@ -2,7 +2,8 @@
 
 **Post-training quantization experiments with decisions you can inspect.**
 
-QuantSmith turns an FP32 ONNX model and representative inputs into a W8A8 QDQ graph.
+QuantSmith supports static W8A8 QDQ quantization with representative inputs and
+dynamic W8A8 projection quantization without calibration samples.
 It also returns the plans behind that graph: which consumer edges were quantized,
 which producer outputs were quantized, which layers were excluded, and which scales, zero points, or channel transforms
 were chosen. Use those decisions to investigate an accuracy drop, change one
@@ -106,6 +107,25 @@ and `.calibrate([])`. They store eligible constants in two bytes and rely on ORT
 graph optimization to
 restore them once at initialization. Runtime RAM can increase; evaluate accuracy
 after rounding. BF16 supports a wider range but has coarser precision than FP16.
+
+For autoregressive inference, use
+[`DynamicQuantizationConfig`](src/quantsmith/algorithms/dynamic/README.md):
+
+```python
+from quantsmith.config import DynamicQuantizationConfig
+
+outcome = (
+    Quantizer.from_config(DynamicQuantizationConfig())
+    .quantize(onnx.load("decoder.onnx"))
+    .execute()
+)
+```
+
+This quantizes constant-weight MatMul projections to per-column INT8 and computes
+activation scales during each inference call. Outputs remain FP32. Symbolic
+sequence and KV-cache dimensions are preserved; attention products and existing
+floating caches remain floating. Inspect the execution report for exclusions and
+evaluate quality and latency on your deployment runtime.
 
 ## What you can inspect and change
 

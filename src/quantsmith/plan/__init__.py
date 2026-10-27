@@ -15,6 +15,7 @@ from pydantic import (
 
 from quantsmith.domain import Encoding, FloatArray, frozen_array
 from quantsmith.plan.constants import QuantizeConstant
+from quantsmith.plan.dynamic import DynamicQuantizeMatMul
 from quantsmith.result import FailureKind, Ok, QuantSmithError, Result, failure
 
 
@@ -70,7 +71,12 @@ class FloatOutput(BaseModel):
 
 
 Operation: TypeAlias = (
-    QuantizeInput | QuantizeOutput | FloatOutput | QuantizeConstant | RescaleInput
+    QuantizeInput
+    | QuantizeOutput
+    | FloatOutput
+    | QuantizeConstant
+    | RescaleInput
+    | DynamicQuantizeMatMul
 )
 
 
@@ -89,6 +95,7 @@ class QuantizationPlan(BaseModel):
         keys: set[tuple[str, int]] = set()
         outputs: set[tuple[str, int]] = set()
         transforms: set[str] = set()
+        dynamic: set[str] = set()
         for operation in self.operations:
             match operation:
                 case (
@@ -109,10 +116,18 @@ class QuantizationPlan(BaseModel):
                     if node in transforms:
                         raise ValueError("duplicate rescaling")
                     transforms.add(node)
+                case DynamicQuantizeMatMul(node=node):
+                    if node in dynamic:
+                        raise ValueError("duplicate dynamic quantization")
+                    dynamic.add(node)
                 case _:
                     assert_never(operation)
-        if transforms and (keys or outputs):
+        if transforms and (keys or outputs or dynamic):
             raise ValueError("lower transforms and recalibrate before quantizing")
+        if dynamic.intersection(node for node, _ in keys | outputs):
+            raise ValueError(
+                "dynamic quantization owns all inputs and outputs of a node"
+            )
         for operation in self.operations:
             if (
                 isinstance(operation, FloatOutput)
@@ -121,7 +136,7 @@ class QuantizationPlan(BaseModel):
                 raise ValueError(
                     "float output requires quantized activation and weight inputs"
                 )
-        affected = transforms | {node for node, _ in keys | outputs}
+        affected = transforms | dynamic | {node for node, _ in keys | outputs}
         if affected.intersection(self.excluded):
             raise ValueError("excluded nodes cannot have plan operations")
         return self
