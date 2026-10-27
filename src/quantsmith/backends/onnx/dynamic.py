@@ -13,7 +13,7 @@ from quantsmith.backends.onnx.integer_execution.audit import UnverifiedNode
 from quantsmith.domain import Encoding, Graph, Node
 from quantsmith.pipeline.contracts import CalibrationContext
 from quantsmith.pipeline.state import FloatGraph, QuantizedGraph
-from quantsmith.plan import DynamicQuantizeMatMul, QuantizationPlan
+from quantsmith.plan import DynamicQuantizeGemm, DynamicQuantizeMatMul, QuantizationPlan
 from quantsmith.reconstruction.affine import codes
 from quantsmith.result import Err, FailureKind, Ok, QuantSmithError, Result, failure
 from quantsmith.rules import Exclude, Rules
@@ -162,12 +162,13 @@ def _decision(
             return error
         case Ok(plan):
             if any(
-                not isinstance(item, DynamicQuantizeMatMul) for item in plan.operations
+                not isinstance(item, DynamicQuantizeMatMul | DynamicQuantizeGemm)
+                for item in plan.operations
             ):
                 return failure(
                     FailureKind.CONFLICT,
                     node.name,
-                    "dynamic stage requires dynamic MatMul operations",
+                    "dynamic stage requires dynamic matrix operations",
                 )
             return Ok(plan)
 

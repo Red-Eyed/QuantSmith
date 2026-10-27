@@ -27,6 +27,7 @@ from quantsmith.domain import (
     PerTensor,
 )
 from quantsmith.plan import (
+    DynamicQuantizeGemm,
     DynamicQuantizeMatMul,
     FloatOutput,
     QuantizationPlan,
@@ -369,12 +370,21 @@ def _lower(model: ModelProto, plan: QuantizationPlan) -> ModelProto:
         dynamic = [
             operation
             for operation in operations[node.name]
-            if isinstance(operation, DynamicQuantizeMatMul)
+            if isinstance(operation, DynamicQuantizeMatMul | DynamicQuantizeGemm)
         ]
         if dynamic:
             from quantsmith.backends.onnx.dynamic import lower_dynamic_matmul
+            from quantsmith.backends.onnx.dynamic_gemm import lower_dynamic_gemm
 
-            rewritten.extend(lower_dynamic_matmul(result, node, dynamic[0], names.new))
+            match dynamic[0]:
+                case DynamicQuantizeMatMul() as operation:
+                    rewritten.extend(
+                        lower_dynamic_matmul(result, node, operation, names.new)
+                    )
+                case DynamicQuantizeGemm() as operation:
+                    rewritten.extend(
+                        lower_dynamic_gemm(result, node, operation, names.new)
+                    )
             continue
         preceding = bias_qdq(result, node, operations[node.name], names.new)
         following: list[NodeProto] = []
@@ -390,7 +400,7 @@ def _lower(model: ModelProto, plan: QuantizationPlan) -> ModelProto:
                     preceding.extend(rescale(result, node, operation, names))
                 case FloatOutput():
                     pass
-                case DynamicQuantizeMatMul():
+                case DynamicQuantizeMatMul() | DynamicQuantizeGemm():
                     raise AssertionError(
                         "dynamic operations are lowered as complete nodes"
                     )

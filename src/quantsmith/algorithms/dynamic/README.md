@@ -35,7 +35,7 @@ outcome = Quantizer.from_config(DynamicQuantizationConfig()).quantize(model).exe
 ```
 
 Handle `Ok(result)` and `Err(error)` explicitly. `result.plans` contains
-`DynamicQuantizeMatMul` operations with owned weight encodings; no activation
+`DynamicQuantizeMatMul` or `DynamicQuantizeGemm` operations with owned weight encodings; no activation
 scale is invented during planning. `result.execution` verifies source-matched
 integer CPU kernels and records excluded nodes with reasons. A graph with no
 eligible projections returns an empty integer-node report, not an integer claim.
@@ -44,7 +44,7 @@ For custom selection, compose
 `Pipeline(DynamicQuantizationStage(rules)).then(VerifyStage())`, importing the
 stages from `quantsmith.backends.onnx.dynamic` and
 `quantsmith.backends.onnx.stages`. The rules contain `DynamicW8A8()`, `Exclude`,
-or an `Algorithm` plugin with no calibration needs and only dynamic MatMul
+or an `Algorithm` plugin with no calibration needs and only dynamic matrix
 operations. Expected plugin failures propagate as `Err`; unexpected exceptions
 remain exceptions.
 The pure algorithm requests `Needs()` and ignores activation statistics. The
@@ -59,8 +59,13 @@ dynamic stage never reads the sample source, including one supplied to
 - Preserves symbolic sequence/batch dimensions and graph input/output names.
   Existing floating KV-cache inputs/outputs remain floating; this does not add
   caching to a model or quantize the cache.
-- Runtime-weight attention products (QKᵀ/AV), Gemm, Conv, and custom/fused
-  attention operators are excluded. Export projections as standard MatMul nodes.
+- Also supports FP32 Gemm with rank-two constant weights, both `transA`/`transB`
+  layouts, unit `alpha`/`beta`, and an optional broadcastable FP32 bias (constant
+  or runtime). Bias addition remains floating. For example, a restored integer
+  contraction of `2.0` and bias `0.25` produce `2.25`. Weight encodings follow the
+  source output axis; transpose adapters are local to the selected consumer.
+- Runtime-weight attention products (QKᵀ/AV), non-unit Gemm coefficients, Conv,
+  and custom/fused attention operators are excluded with reasons.
 - Flat graphs only: existing admission rejects control-flow subgraphs and
   overridable initializers. Selected weights must be finite and nonempty.
 - Fold smoothing scales before this stage. Dynamic configuration itself needs

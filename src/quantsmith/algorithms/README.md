@@ -1,6 +1,6 @@
 # Algorithms: functional core and imperative shell
 
-[Dynamic W8A8](dynamic/README.md) plans constant-weight MatMul projections
+[Dynamic W8A8](dynamic/README.md) plans constant-weight MatMul and Gemm projections
 without calibration statistics. Its activation scales are computed during
 inference, independently for each invocation; outputs remain floating point.
 

@@ -10,6 +10,7 @@ from quantsmith.algorithms import Needs, Statistics
 from quantsmith.algorithms.dynamic import DynamicW8A8
 from quantsmith.domain import Encoding, FloatArray, Graph, Node, PerChannel
 from quantsmith.plan import (
+    DynamicQuantizeGemm,
     DynamicQuantizeMatMul,
     FloatOutput,
     Operation,
@@ -68,7 +69,6 @@ def test_offline_weights_and_empty_requirements(
 @pytest.mark.parametrize(
     ("layout", "detail"),
     [
-        ("Gemm", "requires"),
         ("Conv", "requires"),
         ("runtime", "required"),
         ("batched", "rank-two"),
@@ -79,7 +79,7 @@ def test_unsupported_layouts(graph: Graph, layout: str, detail: str) -> None:
     node = graph.nodes[0]
     weights: Mapping[str, FloatArray] = graph.weights
     match layout:
-        case "Gemm" | "Conv":
+        case "Conv":
             node = Node(
                 name=node.name,
                 op=layout,
@@ -150,3 +150,57 @@ def test_reject_invalid_weight_contract(invalid: str) -> None:
     )
     with pytest.raises(ValidationError, match="symmetric INT8 output-column"):
         DynamicQuantizeMatMul(node="projection", weight_encoding=encoding)
+
+
+@pytest.mark.parametrize("transposed", [False, True])
+def test_gemm_uses_source_output_axis(graph: Graph, transposed: bool) -> None:
+    """Gemm plans retain the source weight layout and require no activation data."""
+    weight = graph.weights["w"].T if transposed else graph.weights["w"]
+    node = Node(
+        name="gemm",
+        op="Gemm",
+        inputs=("x", "w", "bias"),
+        outputs=("y",),
+        attributes={"transB": int(transposed)},
+    )
+    gemm = Graph(nodes=(node,), weights={"w": weight})
+    assert expect_ok(DynamicW8A8().requirements(node, gemm)) == Needs()
+    plan = expect_ok(
+        DynamicW8A8().plan(node, gemm, Statistics(ranges={}, histograms={}))
+    )
+    match plan.operations:
+        case (DynamicQuantizeGemm(weight_encoding=encoding),):
+            assert encoding.granularity == PerChannel(axis=0 if transposed else 1)
+            np.testing.assert_array_equal(encoding.scale, [1, 2, 1])
+            assert not encoding.scale.flags.writeable
+        case _:
+            pytest.fail("expected one dynamic Gemm operation")
+
+
+@pytest.mark.parametrize("attribute", ["alpha", "beta", "transA", "transB"])
+def test_gemm_rejects_unsupported_attributes(graph: Graph, attribute: str) -> None:
+    """Unsupported Gemm semantics are explicit before lowering."""
+    node = Node(
+        name="gemm",
+        op="Gemm",
+        inputs=("x", "w"),
+        outputs=("y",),
+        attributes={attribute: 2},
+    )
+    gemm = Graph(nodes=(node,), weights=graph.weights)
+    expect_error(DynamicW8A8().requirements(node, gemm), "unit alpha/beta")
+
+
+def test_gemm_plan_rejects_conflicting_writes(graph: Graph) -> None:
+    """Gemm owns a complete node under the same conflict rules as MatMul."""
+    node = Node(
+        name="projection", op="Gemm", inputs=("x", "w"), outputs=("y",), attributes={}
+    )
+    gemm = Graph(nodes=(node,), weights=graph.weights)
+    plan = expect_ok(
+        DynamicW8A8().plan(node, gemm, Statistics(ranges={}, histograms={}))
+    )
+    with pytest.raises(ValidationError, match="duplicate dynamic"):
+        QuantizationPlan(operations=plan.operations + plan.operations)
+    with pytest.raises(ValidationError, match="excluded"):
+        QuantizationPlan(operations=plan.operations, excluded=("projection",))

@@ -1,6 +1,6 @@
 # ONNX backend
 
-[`DynamicQuantizationStage`](dynamic.py) provides calibration-free MatMul
+[`DynamicQuantizationStage`](dynamic.py) provides calibration-free MatMul/Gemm
 projection lowering with `DynamicQuantizeLinear`, `MatMulInteger`, and FP32
 restoration. It preserves symbolic shapes and floating cache interfaces and
 uses the same source-oriented execution audit. See

@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict
 
 from quantsmith.domain import Absent
 from quantsmith.plan import (
+    DynamicQuantizeGemm,
     DynamicQuantizeMatMul,
     FloatOutput,
     QuantizationPlan,
@@ -137,7 +138,10 @@ def inspect_execution(
         operation.node
         for plan in plans
         for operation in plan.operations
-        if isinstance(operation, QuantizeOutput | FloatOutput | DynamicQuantizeMatMul)
+        if isinstance(
+            operation,
+            QuantizeOutput | FloatOutput | DynamicQuantizeMatMul | DynamicQuantizeGemm,
+        )
     }
     float_outputs = {
         operation.node
@@ -149,7 +153,7 @@ def inspect_execution(
         operation.node
         for plan in plans
         for operation in plan.operations
-        if isinstance(operation, DynamicQuantizeMatMul)
+        if isinstance(operation, DynamicQuantizeMatMul | DynamicQuantizeGemm)
     }
     integer: list[IntegerNode] = []
     floating: list[UnverifiedNode] = []
@@ -181,7 +185,7 @@ def inspect_execution(
                 frozenset(
                     {"MatMulInteger", "MatMulIntegerToFloat", "DynamicQuantizeMatMul"}
                 )
-                if node.op_type == "MatMul"
+                if node.op_type in {"MatMul", "Gemm"}
                 else frozenset()
             )
         matches = [

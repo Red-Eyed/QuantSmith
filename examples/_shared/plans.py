@@ -10,6 +10,7 @@ from examples._shared.schema import Coverage
 from quantsmith.backends.onnx.integer_execution.audit import ExecutionReport
 from quantsmith.domain import Absent, FloatArray, Graph, IntArray, PerChannel, PerTensor
 from quantsmith.plan import (
+    DynamicQuantizeGemm,
     DynamicQuantizeMatMul,
     FloatOutput,
     Operation,
@@ -84,11 +85,11 @@ class FloatOutputRecord(TypedDict):
     target: Literal["float_output"]
 
 
-class DynamicMatMulRecord(TypedDict):
+class DynamicProjectionRecord(TypedDict):
     """Record runtime activation quantization without a fixed activation scale."""
 
     node: str
-    target: Literal["dynamic_matmul"]
+    target: Literal["dynamic_matmul", "dynamic_gemm"]
     weight_encoding: EncodingRecord
 
 
@@ -101,7 +102,7 @@ class PlanRecord(TypedDict):
         | ConstantRecord
         | RescaleRecord
         | FloatOutputRecord
-        | DynamicMatMulRecord
+        | DynamicProjectionRecord
     ]
     excluded: tuple[str, ...]
 
@@ -124,18 +125,30 @@ def operation_record(
     | ConstantRecord
     | RescaleRecord
     | FloatOutputRecord
-    | DynamicMatMulRecord
+    | DynamicProjectionRecord
 ):
     """Serialize every supported operation without an untyped JSON fallback."""
     match operation:
-        case DynamicQuantizeMatMul(node=node, weight_encoding=encoding):
-            return DynamicMatMulRecord(
+        case (
+            DynamicQuantizeMatMul(node=node, weight_encoding=encoding)
+            | DynamicQuantizeGemm(node=node, weight_encoding=encoding)
+        ):
+            match encoding.granularity:
+                case PerChannel(axis=axis):
+                    pass
+                case _:
+                    raise AssertionError(
+                        "dynamic weights require per-channel encodings"
+                    )
+            return DynamicProjectionRecord(
                 node=node,
-                target="dynamic_matmul",
+                target="dynamic_gemm"
+                if isinstance(operation, DynamicQuantizeGemm)
+                else "dynamic_matmul",
                 weight_encoding=EncodingRecord(
                     scale=array_record(encoding.scale),
                     zero_point=array_record(encoding.zero_point),
-                    granularity=ChannelRecord(axis=1),
+                    granularity=ChannelRecord(axis=axis),
                 ),
             )
         case FloatOutput(node=node, index=index):
@@ -222,7 +235,9 @@ def coverage(graph: Graph, plans: tuple[QuantizationPlan, ...]) -> Coverage:
         for operation in plan.operations:
             match operation:
                 case (
-                    QuantizeInput(node=name, index=0) | DynamicQuantizeMatMul(node=name)
+                    QuantizeInput(node=name, index=0)
+                    | DynamicQuantizeMatMul(node=name)
+                    | DynamicQuantizeGemm(node=name)
                 ):
                     if name in eligible:
                         quantized.append(name)

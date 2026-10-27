@@ -1,9 +1,13 @@
 # Plans
 
-`DynamicQuantizeMatMul` owns a complete constant-weight projection. It contains
-only the offline weight encoding; runtime activation scales are unspecified.
-It cannot share its node with static input/output operations, and rescaling
+`DynamicQuantizeMatMul` and `DynamicQuantizeGemm` each own a complete constant-weight
+projection. Each contains only the offline weight encoding; runtime activation scales are unspecified.
+Neither can share its node with static input/output operations, and rescaling
 must be lowered as a separate graph revision before either quantization mode.
+
+Gemm weight encodings use the original output-channel axis (axis zero when
+`transB=1`, otherwise axis one). The ONNX backend handles transposes and optional
+floating bias while retaining the original Gemm node identity for verification.
 
 A `QuantizationPlan` is an inspectable set of decisions before backend mutation.
 `QuantizeInput` owns one consumer's encoding. `RescaleInput` describes a paired

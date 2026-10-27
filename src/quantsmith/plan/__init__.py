@@ -15,7 +15,7 @@ from pydantic import (
 
 from quantsmith.domain import Encoding, FloatArray, frozen_array
 from quantsmith.plan.constants import QuantizeConstant
-from quantsmith.plan.dynamic import DynamicQuantizeMatMul
+from quantsmith.plan.dynamic import DynamicQuantizeGemm, DynamicQuantizeMatMul
 from quantsmith.result import FailureKind, Ok, QuantSmithError, Result, failure
 
 
@@ -77,6 +77,7 @@ Operation: TypeAlias = (
     | QuantizeConstant
     | RescaleInput
     | DynamicQuantizeMatMul
+    | DynamicQuantizeGemm
 )
 
 
@@ -116,7 +117,7 @@ class QuantizationPlan(BaseModel):
                     if node in transforms:
                         raise ValueError("duplicate rescaling")
                     transforms.add(node)
-                case DynamicQuantizeMatMul(node=node):
+                case DynamicQuantizeMatMul(node=node) | DynamicQuantizeGemm(node=node):
                     if node in dynamic:
                         raise ValueError("duplicate dynamic quantization")
                     dynamic.add(node)
